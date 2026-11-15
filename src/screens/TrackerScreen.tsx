@@ -2,18 +2,19 @@ import { orderBy, query } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import EmotionSheet from '../components/EmotionSheet';
+import ModeToggle from '../components/ModeToggle';
 import OutcomeButtons from '../components/OutcomeButtons';
 import Scoreboard from '../components/Scoreboard';
 import ShotRow from '../components/ShotRow';
 import SyncBadge from '../components/SyncBadge';
 import { pairName, playerName, useCoachData } from '../data/CoachData';
-import { addEmotion, addPoint, setPointShot, undoPoint, updateMatch } from '../data/mutations';
+import { addEmotion, addPoint, setPointShot, setPointZone, undoPoint, updateMatch } from '../data/mutations';
 import { emotionsCol, pointsCol } from '../data/paths';
 import { useQuery } from '../data/useQuery';
 import { usePendingWrites } from '../data/writeErrors';
 import { nextOrder } from '../domain/helpers';
 import { computeMatchState } from '../domain/scoring';
-import type { Emotion, EmotionTag, Match, Outcome, Player, Point, Shot } from '../domain/types';
+import type { Emotion, EmotionTag, Match, Outcome, Player, Point, Shot, Zone } from '../domain/types';
 import { useWakeLock } from '../hooks/useWakeLock';
 
 export default function TrackerScreen() {
@@ -49,12 +50,14 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
   // Punto para el que se ofrece la fila de golpes; null si no se muestra.
   const [shotFor, setShotFor] = useState<string | null>(null);
   const [emotionOpen, setEmotionOpen] = useState(false);
+  const video = match.mode === 'video';
+  const shotPoint = shotFor ? points.find((p) => p.id === shotFor) : undefined;
 
   useEffect(() => {
-    if (!shotFor) return;
+    if (!shotFor || video) return; // en modo vídeo la fila se queda hasta el siguiente punto
     const timer = setTimeout(() => setShotFor(null), SHOT_ROW_MS);
     return () => clearTimeout(timer);
-  }, [shotFor]);
+  }, [shotFor, video]);
 
   const leftId = match.leftPlayerId;
   const rightId = match.playerIds.find((id) => id !== leftId) ?? match.playerIds[1];
@@ -79,8 +82,18 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
   };
 
   const pickShot = (shot: Shot) => {
-    if (shotFor) setPointShot(uid, match.id, shotFor, shot);
+    if (!shotFor) return;
+    if (video) {
+      // Con el vídeo en pausa hay tiempo para corregir: tocar el golpe elegido lo quita y la fila no se cierra.
+      setPointShot(uid, match.id, shotFor, shotPoint?.shot === shot ? null : shot);
+      return;
+    }
+    setPointShot(uid, match.id, shotFor, shot);
     setShotFor(null);
+  };
+
+  const pickZone = (zone: Zone) => {
+    if (shotFor) setPointZone(uid, match.id, shotFor, shotPoint?.zone === zone ? null : zone);
   };
 
   const undo = () => {
@@ -125,18 +138,28 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
         themName={match.opponentsName}
         state={state}
       />
-      <SyncBadge hasPending={pointsQ.hasPending || emotionsQ.hasPending || pendingWrites > 0} pendingPoints={pointsQ.pending} />
+      <div className="flex items-center justify-between gap-2">
+        <ModeToggle mode={match.mode} disabled={closed} onChange={(mode) => updateMatch(uid, match.id, { mode })} />
+        <SyncBadge hasPending={pointsQ.hasPending || emotionsQ.hasPending || pendingWrites > 0} pendingPoints={pointsQ.pending} />
+      </div>
 
       {/* La fila de golpes flota sobre este hueco: nunca cambia el layout ni mueve los botones. */}
       <div className="relative min-h-0 flex-1">
         {closed && <p className="text-center text-slate-400">Partido cerrado.</p>}
-        {shotFor && !closed && <ShotRow onPick={pickShot} />}
+        {shotFor && !closed && (
+          <ShotRow
+            onPick={pickShot}
+            selected={shotPoint?.shot ?? null}
+            zone={video ? { selected: shotPoint?.zone ?? null, onPick: pickZone } : undefined}
+          />
+        )}
       </div>
 
       <OutcomeButtons
         left={{ id: leftId, name: playerName(players, leftId) }}
         right={{ id: rightId, name: playerName(players, rightId) }}
         disabled={locked}
+        compact={video}
         onRegister={register}
       />
 
