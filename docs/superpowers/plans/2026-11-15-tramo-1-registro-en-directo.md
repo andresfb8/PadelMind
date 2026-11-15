@@ -14,6 +14,18 @@
 
 **Pasos que requieren al usuario** (cuentas y consolas externas): Tarea 5 pasos 1–2, Tarea 12 pasos 5–8 y Tarea 13.
 
+## Orden de ejecución (obligatorio)
+
+Las tareas están numeradas por tema, pero se ejecutan en este orden, para probar pronto lo más arriesgado (acceso con Google en la app instalada del iPhone y supervivencia de datos sin red):
+
+1. Tareas 1, 2, 3 y 4. No requieren nada del usuario.
+2. Tareas 5 y 6.
+3. **Tarea 12** (PWA y despliegue) y a continuación **Tarea 13, paso 1** (acceso desde la app instalada). Si ese paso falla, se resuelve antes de construir más pantallas.
+4. Tareas 7, 8, 9 y 10. Volver a desplegar al terminar la 10.
+5. **Tarea 13, paso 3** (supervivencia de datos, dura 3 días): se inicia en cuanto la Tarea 10 está desplegada y corre mientras se hace la Tarea 11.
+6. Tarea 11 y despliegue.
+7. Resto de la Tarea 13 (pasos 2, 4, 5 y 6).
+
 ---
 
 ## Estructura de archivos
@@ -1012,6 +1024,7 @@ git commit -m "Firebase, reglas de seguridad por entrenador y sus pruebas"
 
 ```tsx
 import {
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
@@ -1035,13 +1048,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export const useAuth = () => useContext(Ctx);
 
+// App instalada en la pantalla de inicio (iOS expone `navigator.standalone`).
+function isStandalone(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as { standalone?: boolean }).standalone === true
+  );
+}
+
 export async function signInWithGoogle(): Promise<void> {
   const provider = new GoogleAuthProvider();
+  // En la app instalada las ventanas emergentes pueden abrirse y no volver nunca: se usa redirección.
+  if (isStandalone()) {
+    await signInWithRedirect(auth, provider);
+    return;
+  }
   try {
     await signInWithPopup(auth, provider);
   } catch (e) {
     const code = (e as { code?: string }).code;
-    // En apps instaladas en iOS la ventana emergente puede no estar disponible.
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
       await signInWithRedirect(auth, provider);
       return;
@@ -1051,16 +1076,29 @@ export async function signInWithGoogle(): Promise<void> {
 }
 
 export const signOutUser = () => signOut(auth);
+
+// Errores de un acceso por redirección que acaba de volver a la app.
+export const redirectError = () =>
+  getRedirectResult(auth).then(
+    () => null,
+    (e: unknown) => (e instanceof Error ? e.message : 'No se pudo iniciar sesión'),
+  );
 ```
 
 - [ ] **Step 2: Crear `src/screens/LoginScreen.tsx`**
 
 ```tsx
-import { useState } from 'react';
-import { signInWithGoogle } from '../data/auth';
+import { useEffect, useState } from 'react';
+import { redirectError, signInWithGoogle } from '../data/auth';
 
 export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void redirectError().then((message) => {
+      if (message) setError(message);
+    });
+  }, []);
 
   const enter = () => {
     setError(null);
@@ -1162,39 +1200,7 @@ export const emotionsCol = (uid: string, matchId: string) =>
   collection(db, 'coaches', uid, 'matches', matchId, 'emotions');
 ```
 
-- [ ] **Step 2: Crear `src/data/useQuery.ts`**
-
-```ts
-import { onSnapshot, type Query } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
-
-export type QueryState<T> = {
-  data: T[];
-  loading: boolean;
-  pending: number;      // documentos con escrituras sin sincronizar
-  hasPending: boolean;  // hay algún cambio sin sincronizar, incluidos borrados
-};
-
-// `q` debe venir de useMemo: una consulta nueva en cada render reiniciaría la suscripción.
-export function useQuery<T>(q: Query): QueryState<T> {
-  const [state, setState] = useState<QueryState<T>>({ data: [], loading: true, pending: 0, hasPending: false });
-
-  useEffect(() => {
-    return onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
-      setState({
-        data: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T),
-        loading: false,
-        pending: snap.docs.filter((d) => d.metadata.hasPendingWrites).length,
-        hasPending: snap.metadata.hasPendingWrites,
-      });
-    });
-  }, [q]);
-
-  return state;
-}
-```
-
-- [ ] **Step 3: Crear `src/data/writeErrors.ts`**
+- [ ] **Step 2: Crear `src/data/writeErrors.ts`**
 
 ```ts
 import { useSyncExternalStore } from 'react';
@@ -1221,6 +1227,48 @@ function subscribe(listener: () => void) {
 }
 
 export const useWriteErrors = () => useSyncExternalStore(subscribe, () => errors);
+```
+
+- [ ] **Step 3: Crear `src/data/useQuery.ts`**
+
+```ts
+import { onSnapshot, type Query } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { reportWriteError } from './writeErrors';
+
+export type QueryState<T> = {
+  data: T[];
+  loading: boolean;
+  pending: number;      // documentos con escrituras sin sincronizar
+  hasPending: boolean;  // hay algún cambio sin sincronizar, incluidos borrados
+};
+
+// `q` debe venir de useMemo: una consulta nueva en cada render reiniciaría la suscripción.
+export function useQuery<T>(q: Query): QueryState<T> {
+  const [state, setState] = useState<QueryState<T>>({ data: [], loading: true, pending: 0, hasPending: false });
+
+  useEffect(() => {
+    return onSnapshot(
+      q,
+      { includeMetadataChanges: true },
+      (snap) => {
+        setState({
+          data: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T),
+          loading: false,
+          pending: snap.docs.filter((d) => d.metadata.hasPendingWrites).length,
+          hasPending: snap.metadata.hasPendingWrites,
+        });
+      },
+      (e) => {
+        // Por ejemplo, reglas sin publicar: sin esto la app se quedaría en "Cargando…".
+        reportWriteError(`No se pudieron leer los datos: ${e.message}`);
+        setState((prev) => ({ ...prev, loading: false }));
+      },
+    );
+  }, [q]);
+
+  return state;
+}
 ```
 
 - [ ] **Step 4: Crear `src/data/mutations.ts`**
@@ -1910,7 +1958,8 @@ export default function TrackerScreen() {
   const { uid, matches, players, loading } = useCoachData();
   const match = matches.find((m) => m.id === matchId);
   if (loading) return <p className="p-6 text-slate-400">Cargando…</p>;
-  if (!match) return <p className="p-6">Partido no encontrado. <Link to="/" className="underline">Volver</Link></p>;
+  // Justo después de crear un partido puede tardar un instante en llegar a la lista local.
+  if (!match) return <p className="p-6 text-slate-400">Abriendo partido… <Link to="/" className="underline">Volver</Link></p>;
   return <Tracker uid={uid} match={match} players={players} />;
 }
 
@@ -2397,7 +2446,7 @@ export default defineConfig({
 
 - [ ] **Step 5: Crear `vercel.json`**
 
-Sustituir `PROJECT_ID` por el `projectId` de `.env.local`. La primera regla hace que el acceso con Google use el mismo dominio que la app, necesario para que funcione en la app instalada en iOS.
+Sustituir `PROJECT_ID` por el `projectId` de `.env.local`. Antes de darlo por bueno, consultar en la documentación de Firebase la página "Best practices for using signInWithRedirect on browsers that block third-party storage access" (opción de proxy inverso hacia `firebaseapp.com`) y comprobar si hay que redirigir alguna ruta más bajo `/__/` además de `/__/auth/`; si la hay, añadirla con la misma forma. La primera regla hace que el acceso con Google use el mismo dominio que la app, necesario para que funcione en la app instalada en iOS.
 
 ```json
 {
@@ -2414,7 +2463,7 @@ Run: `npm run build`
 Expected: sin errores; `dist/` contiene `sw.js` y `manifest.webmanifest`.
 
 Run: `npm run preview`, abrir la URL que indique, entrar, recargar una vez, activar Offline en las herramientas de desarrollo y recargar.
-Expected: la app se abre sin red, muestra los partidos y permite registrar puntos.
+Expected: la app se abre sin red con la sesión iniciada. Si las tareas 7–10 ya están hechas, además muestra los partidos y permite registrar puntos.
 
 - [ ] **Step 7: Commit**
 
