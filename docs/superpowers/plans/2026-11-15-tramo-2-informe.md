@@ -10,7 +10,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-15-padel-mind-match-design.md`, secciones 6 (analítica) y 7 (informe). Este plan cubre solo el tramo 2. Quedan fuera: modo vídeo, zona y pantalla de revisión (tramo 3), y acumulados entre partidos.
 
-**Código ya probado.** Todo el código de este plan (módulos de analítica, componentes y pantalla) se escribió y se ejecutó antes de redactarlo: 51 pruebas nuevas pasan, `tsc` y `vite build` terminan sin errores, el informe se vio renderizado con un partido simulado en tamaño de móvil y la generación de la imagen funcionó en Chrome (750×3088 px, 421 KB, ~2 s). Lo que **no** está comprobado es el comportamiento en un iPhone real: de eso trata la Tarea 10.
+**Código ya probado.** El código de los módulos de analítica, los componentes, `useReportImage` y `shareImage` se escribió y se ejecutó antes de redactar este plan:
+
+- 51 pruebas nuevas pasan; `tsc` y `vite build` terminan sin errores.
+- El informe se vio renderizado con un partido simulado a 375 px de ancho, y la imagen se generó en Chrome (PNG de 750×3088 px, ~2 s).
+- `useReportImage` se comprobó: con el mismo contenido no vuelve a preparar la imagen (mismo archivo), y al cambiar el contenido pasa a "preparando" y genera otra.
+- Los cinco caminos de `shareImage` se ejecutaron con un navegador simulado: compartir, cancelar, rechazo del sistema, sin soporte de archivos y sin Web Share. Compartir se llama en el mismo toque, antes de cualquier espera.
+- Los colores del gráfico se validaron con el validador de la guía de gráficos sobre el fondo real de la tarjeta.
+
+**No** se ejecutó `ReportScreen` (necesita sesión de Google y Firestore) ni nada en un iPhone real: de eso trata la Tarea 10. Una nota para quien pruebe: `html-to-image` espera a un fotograma de pantalla, así que con la página oculta (o en un panel de navegador no visible) no avanza; en el iPhone, la imagen termina de prepararse cuando la app vuelve a estar a la vista.
 
 ## Cambios respecto a la spec y decisiones tomadas
 
@@ -18,7 +26,12 @@
 - **Exportación como imagen PNG** (no PDF), como se acordó. Web Share con el archivo; si el dispositivo no lo permite, se descarga.
 - **La imagen se prepara antes de pulsar el botón** (a los 700 ms de asentarse la pantalla). El botón dice "Preparando imagen…" hasta que está lista.
 - **Resiliencia:** mide el punto siguiente a un no forzado, como en la spec. Lo que ocurre tras una emoción negativa se ve en el bloque de emociones.
-- **Aviso de golpe** ("Ana falla sobre todo de volea") solo aparece con 2 o más errores con ese golpe: un solo caso no es un patrón.
+- **Aviso de golpe** ("Ana falla sobre todo de volea") solo aparece con 2 o más errores con ese golpe, y el total que se muestra es el de no forzados **con golpe anotado** ("2 de 3"), no el de todos.
+- **Colores y formas del gráfico** (según la guía de gráficos): ya no se distingue rojo de verde. Nuestro = azul, rival = naranja (distancia 26,8 en simulación de daltonismo, validada); punto de oro = círculo claro sin color (el amarillo se confunde con el naranja); emociones = anillo con **+** (verde de estado) o **−** (rojo de estado). Cada tipo se reconoce por la forma aunque no se vea el color, y la leyenda usa los mismos símbolos y solo muestra los que aparecen. No hay tooltips al pasar el ratón: es un informe táctil pensado para convertirse en imagen y las cifras están en los bloques de debajo.
+- **La imagen se vuelve a preparar solo si cambia el contenido** (clave calculada con el contenido del informe), no con cada instantánea de Firestore; si no, el botón parpadearía a "Preparando…" mientras se sincronizan puntos.
+- **Solo se espera a los puntos para pintar el informe**, no a las emociones: una consulta vacía y sin caché puede tardar unos segundos sin red.
+- **"Ver imagen"**: segundo recurso. Si compartir o la descarga no funcionan en el iPhone instalado, la imagen se muestra a pantalla completa para guardarla o compartirla con una pulsación larga.
+- **Spec actualizada:** la sección 3 ya no menciona Recharts.
 - **"Finalizar partido"** ahora abre el informe en vez de volver a la lista. En la lista, cada partido tiene un botón "Informe".
 - **Detalle de `setsLabel`:** el set en curso solo se muestra si ya se jugó algún punto en él; un set decidido por tie-break se muestra como `7-6(5)` y un tie-break en curso como `6-6 (2-1)`.
 - **Las ventanas de emoción que se solapan cuentan cada punto en las dos** (documentado en `emotionSummary`).
@@ -43,9 +56,10 @@ src/domain/
 src/lib/exportImage.ts  renderNodeToPng, shareImage
 src/hooks/useReportImage.ts
 src/components/report/
-  MomentumChart.tsx     el gráfico SVG
+  MomentumChart.tsx     el gráfico SVG y su leyenda
   ReportSections.tsx    los cinco bloques de texto
   ReportView.tsx        el informe completo (lo que se convierte en imagen)
+  ImagePreview.tsx      la imagen a pantalla completa (recurso de reserva)
 src/screens/ReportScreen.tsx   datos + botón de compartir
 Modificados: src/App.tsx, src/screens/HomeScreen.tsx, src/screens/TrackerScreen.tsx, package.json
 ```
@@ -347,7 +361,8 @@ describe('topUnforcedShot', () => {
     points[1].shot = 'bandeja_vibora';
     points[2].shot = 'bandeja_vibora';
     const [ana] = technicalSummary(points, PLAYERS);
-    expect(topUnforcedShot(ana)).toEqual({ shot: 'bandeja_vibora', count: 2 });
+    // el cuarto no forzado no tiene golpe anotado y no entra en el total
+    expect(topUnforcedShot(ana)).toEqual({ shot: 'bandeja_vibora', count: 2, of: 3 });
   });
 
   it('devuelve null si no hay no forzados con golpe anotado', () => {
@@ -410,13 +425,16 @@ export function withoutDetail(played: Point[]): number {
 }
 
 // El golpe con el que más errores no forzados se anotaron (el primero de la lista si hay empate).
-export function topUnforcedShot(row: PlayerTechnical): { shot: Shot; count: number } | null {
+// `of` es el total de no forzados que tienen golpe anotado: los que no lo tienen no entran en la cuenta.
+export function topUnforcedShot(row: PlayerTechnical): { shot: Shot; count: number; of: number } | null {
   let best: { shot: Shot; count: number } | null = null;
+  let of = 0;
   for (const shot of SHOTS) {
     const count = row.byShot[shot]?.unforced ?? 0;
+    of += count;
     if (count > 0 && (!best || count > best.count)) best = { shot, count };
   }
-  return best;
+  return best ? { ...best, of } : null;
 }
 ```
 
@@ -1181,14 +1199,15 @@ git commit -m "Generación de la imagen del informe y compartir con el sistema"
 ### Task 8: Componentes del informe
 
 **Files:**
-- Create: `src/components/report/MomentumChart.tsx`, `src/components/report/ReportSections.tsx`, `src/components/report/ReportView.tsx`
+- Create: `src/components/report/MomentumChart.tsx`, `src/components/report/ReportSections.tsx`, `src/components/report/ReportView.tsx`, `src/components/report/ImagePreview.tsx`
 
 - [ ] **Step 1: Crear `MomentumChart.tsx`**
 
-El eje X son los puntos; el eje Y, el saldo acumulado (sube con cada punto nuestro, baja con cada rival). Los separadores finos son juegos, los gruesos con etiqueta son sets. Formas: círculo relleno = punto de oro, rombo = break (verde nuestro, rojo rival), anillo = emoción (verde positiva, rojo negativa).
+El eje X son los puntos; el eje Y, el saldo acumulado (sube con cada punto nuestro, baja con cada rival). Los separadores finos son juegos, los gruesos con etiqueta son sets. Cada marca se distingue por forma y color: círculo claro = punto de oro, rombo = break (azul nuestro, naranja rival), anillo con + o − = emoción (verde o rojo de estado). Todas llevan un borde del color del fondo para separarse de la línea que cruzan. La leyenda reutiliza `MarkShape` para que los símbolos coincidan.
 
 ```tsx
-import type { Mark, Momentum } from '../../domain/analytics/momentum';
+import { signed } from '../../domain/format';
+import type { MarkKind, Momentum } from '../../domain/analytics/momentum';
 
 const W = 520;
 const H = 190;
@@ -1196,39 +1215,59 @@ const PAD_X = 10;
 const PAD_TOP = 22;
 const PAD_BOTTOM = 12;
 
+// Colores de la paleta de gráficos, en su versión para fondo oscuro. Todo el gráfico va sobre
+// la tarjeta `bg-slate-900` (SURFACE); el azul y el naranja se validaron sobre ese fondo.
 const COLORS = {
-  line: '#5aa9ff',
-  axis: '#3a4656',
-  game: '#1f2a37',
-  text: '#8a97a6',
-  gold: '#f5c542',
-  good: '#4fd08a',
-  bad: '#ef6b6b',
+  surface: '#0f172a',
+  line: '#3987e5', // azul: nosotros
+  them: '#d95926', // naranja: rival
+  good: '#0ca30c', // color de estado "bien": emoción positiva
+  bad: '#d03b3b', // color de estado "mal": emoción negativa
+  ink: '#f0efec', // punto de oro: sin color, para no confundirlo con el naranja
+  grid: '#2c2c2a',
+  axis: '#383835',
+  text: '#898781',
 };
 
-function MarkShape({ mark, cx, cy }: { mark: Mark; cx: number; cy: number }) {
-  switch (mark.kind) {
+// Cada tipo de marca se distingue por la forma y no solo por el color:
+// círculo relleno = punto de oro · rombo = break · anillo con + o − = emoción.
+export function MarkShape({ kind, cx, cy }: { kind: MarkKind; cx: number; cy: number }) {
+  const ring = { stroke: COLORS.surface, strokeWidth: 2 }; // separa la marca de la línea que cruza
+  switch (kind) {
     case 'gold':
-      return <circle cx={cx} cy={cy} r={4.5} fill={COLORS.gold} />;
+      return <circle cx={cx} cy={cy} r={4.5} fill={COLORS.ink} {...ring} />;
     case 'break_us':
-    case 'break_them': {
-      const fill = mark.kind === 'break_us' ? COLORS.good : COLORS.bad;
-      return <polygon points={`${cx},${cy - 6.5} ${cx + 6.5},${cy} ${cx},${cy + 6.5} ${cx - 6.5},${cy}`} fill={fill} />;
-    }
-    case 'emotion_pos':
-    case 'emotion_neg':
+    case 'break_them':
       return (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={7}
-          fill="none"
-          stroke={mark.kind === 'emotion_pos' ? COLORS.good : COLORS.bad}
-          strokeWidth={2.5}
+        <polygon
+          points={`${cx},${cy - 6.5} ${cx + 6.5},${cy} ${cx},${cy + 6.5} ${cx - 6.5},${cy}`}
+          fill={kind === 'break_us' ? COLORS.line : COLORS.them}
+          {...ring}
         />
       );
+    case 'emotion_pos':
+    case 'emotion_neg': {
+      const color = kind === 'emotion_pos' ? COLORS.good : COLORS.bad;
+      return (
+        <g>
+          <circle cx={cx} cy={cy} r={7.5} fill={COLORS.surface} stroke={color} strokeWidth={2} />
+          <line x1={cx - 3.2} x2={cx + 3.2} y1={cy} y2={cy} stroke={color} strokeWidth={2} strokeLinecap="round" />
+          {kind === 'emotion_pos' && (
+            <line x1={cx} x2={cx} y1={cy - 3.2} y2={cy + 3.2} stroke={color} strokeWidth={2} strokeLinecap="round" />
+          )}
+        </g>
+      );
+    }
   }
 }
+
+const LEGEND: { kind: MarkKind; label: string }[] = [
+  { kind: 'gold', label: 'punto de oro' },
+  { kind: 'break_us', label: 'break nuestro' },
+  { kind: 'break_them', label: 'break rival' },
+  { kind: 'emotion_pos', label: 'emoción positiva' },
+  { kind: 'emotion_neg', label: 'emoción negativa' },
+];
 
 export default function MomentumChart({ momentum }: { momentum: Momentum }) {
   const n = momentum.values.length - 1;
@@ -1241,14 +1280,21 @@ export default function MomentumChart({ momentum }: { momentum: Momentum }) {
   const y = (v: number) => mid - (v / maxAbs) * (innerH / 2);
   const line = momentum.values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const sets = [{ x: 0, setIndex: 0 }, ...momentum.boundaries.filter((b) => b.kind === 'set')];
+  const present = new Set(momentum.marks.map((m) => m.kind));
+  const last = momentum.values[n];
 
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Gráfico de momentum del partido">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        role="img"
+        aria-label={`Momentum del partido: saldo final ${signed(last)} tras ${n} puntos`}
+      >
         {momentum.boundaries
           .filter((b) => b.kind === 'game')
           .map((b) => (
-            <line key={`g${b.x}`} x1={x(b.x)} x2={x(b.x)} y1={PAD_TOP} y2={H - PAD_BOTTOM} stroke={COLORS.game} />
+            <line key={`g${b.x}`} x1={x(b.x)} x2={x(b.x)} y1={PAD_TOP} y2={H - PAD_BOTTOM} stroke={COLORS.grid} />
           ))}
         {sets.map((s) => (
           <g key={`s${s.x}`}>
@@ -1258,20 +1304,25 @@ export default function MomentumChart({ momentum }: { momentum: Momentum }) {
             </text>
           </g>
         ))}
-        <line x1={PAD_X} x2={W - PAD_X} y1={mid} y2={mid} stroke={COLORS.axis} strokeDasharray="4 4" />
+        <line x1={PAD_X} x2={W - PAD_X} y1={mid} y2={mid} stroke={COLORS.axis} />
         <text x={W - PAD_X} y={mid - 4} fill={COLORS.text} fontSize={9} textAnchor="end">
           nosotros ▲ · ▼ rival
         </text>
-        <polyline fill="none" stroke={COLORS.line} strokeWidth={2.5} strokeLinejoin="round" points={line} />
+        <polyline fill="none" stroke={COLORS.line} strokeWidth={2} strokeLinejoin="round" points={line} />
         {momentum.marks.map((m, i) => (
-          <MarkShape key={i} mark={m} cx={x(m.x)} cy={y(m.y)} />
+          <MarkShape key={i} kind={m.kind} cx={x(m.x)} cy={y(m.y)} />
         ))}
       </svg>
-      <p className="mt-1 text-[10px] leading-4 text-slate-400">
-        <span style={{ color: COLORS.gold }}>●</span> punto de oro · <span style={{ color: COLORS.good }}>◆</span> break
-        nuestro · <span style={{ color: COLORS.bad }}>◆</span> break rival · <span style={{ color: COLORS.good }}>○</span>{' '}
-        emoción positiva · <span style={{ color: COLORS.bad }}>○</span> emoción negativa
-      </p>
+      <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
+        {LEGEND.filter((item) => present.has(item.kind)).map((item) => (
+          <li key={item.kind} className="flex items-center gap-1">
+            <svg width={16} height={16} viewBox="-8 -8 16 16" aria-hidden="true">
+              <MarkShape kind={item.kind} cx={0} cy={0} />
+            </svg>
+            {item.label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1355,8 +1406,8 @@ export function TechnicalSection({
         const top = topUnforcedShot(r);
         return top && top.count >= MIN_SHOT_ERRORS ? (
           <p key={r.playerId} className="mt-2 text-xs text-slate-400">
-            {name(r.playerId)} falla sobre todo de {SHOT_LABEL[top.shot].toLowerCase()} ({top.count} de {r.unforced} no
-            forzados).
+            {name(r.playerId)} falla sobre todo de {SHOT_LABEL[top.shot].toLowerCase()} ({top.count} de {top.of} no
+            forzados con golpe anotado).
           </p>
         ) : null;
       })}
@@ -1528,16 +1579,60 @@ export default function ReportView({ report, title, subtitle, name, ref }: Props
 }
 ```
 
-- [ ] **Step 4: Verificar**
+- [ ] **Step 4: Crear `ImagePreview.tsx`**
+
+Muestra la imagen generada a pantalla completa. En iOS, una pulsación larga sobre una imagen ofrece guardarla o compartirla.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+// Muestra la imagen ya generada para guardarla o compartirla manteniéndola pulsada. Es el recurso
+// de reserva si el menú de compartir o la descarga no funcionan en el dispositivo.
+export default function ImagePreview({ blob, onClose }: { blob: Blob; onClose: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(blob);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [blob]);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex flex-col bg-black/90"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="flex items-center justify-between gap-3 p-3 text-sm">
+        <p className="text-slate-300">Mantén pulsada la imagen para guardarla o compartirla.</p>
+        <button onClick={onClose} className="shrink-0 px-3 py-2 font-bold">
+          Cerrar
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3">
+        {url && (
+          <img
+            src={url}
+            alt="Informe del partido"
+            className="mx-auto w-full max-w-xl"
+            style={{ WebkitTouchCallout: 'default', userSelect: 'auto' }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: Verificar**
 
 Run: `npx tsc`, `npm test` y `npm run build`
 Expected: `tsc` sin salida; 86 pruebas pasan; la compilación termina sin errores (el aviso de tamaño del paquete es esperable).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/components/report
-git commit -m "Componentes del informe: gráfico de momentum y bloques"
+git commit -m "Componentes del informe: gráfico de momentum, bloques y vista de la imagen"
 ```
 
 ---
@@ -1550,12 +1645,13 @@ git commit -m "Componentes del informe: gráfico de momentum y bloques"
 
 - [ ] **Step 1: Crear `ReportScreen.tsx`**
 
-Lee puntos y emociones con las mismas consultas del registro (funciona sin conexión desde la caché local), construye el informe y lo pinta. El botón llama a `shareImage` directamente desde el toque con la imagen ya preparada.
+Lee puntos y emociones con las mismas consultas del registro (funciona sin conexión desde la caché local), construye el informe y lo pinta. Tres detalles que no deben cambiarse: la imagen se prepara con una clave calculada con el **contenido** del informe (`contentKey`), no con la identidad de los datos; solo se espera a los puntos para empezar a pintar; y el botón llama a `shareImage` directamente desde el toque con la imagen ya preparada.
 
 ```tsx
 import { orderBy, query } from 'firebase/firestore';
 import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import ImagePreview from '../components/report/ImagePreview';
 import ReportView from '../components/report/ReportView';
 import { pairName, playerName, useCoachData } from '../data/CoachData';
 import { emotionsCol, pointsCol } from '../data/paths';
@@ -1592,25 +1688,35 @@ function Report({ uid, match, players }: { uid: string; match: Match; players: P
     [match, pointsQ.data, emotionsQ.data],
   );
 
-  const cardRef = useRef<HTMLDivElement>(null);
-  const image = useReportImage(cardRef, report);
-  const [message, setMessage] = useState<string | null>(null);
-
   const pair = pairName(players, match.playerIds);
   const title = `${pair} vs ${match.opponentsName}`;
   const subtitle = `${new Date(match.date).toLocaleDateString('es-ES')} · ${formatLabel(match.format)}`;
+
+  // Las consultas entregan una lista nueva en cada instantánea, aunque los datos sean los mismos
+  // (por ejemplo, al sincronizar). Se prepara la imagen solo cuando cambia el contenido del informe.
+  const contentKey = useMemo(() => JSON.stringify([report, title, subtitle]), [report, title, subtitle]);
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const image = useReportImage(cardRef, contentKey);
+  const [message, setMessage] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   // Se llama directamente desde el toque: la imagen ya está preparada (ver useReportImage).
   const share = () => {
     if (image.status !== 'ready') return;
     setMessage(null);
     void shareImage(image.blob, reportFileName(pair, match.date), title).then(
-      (result) => setMessage(result === 'downloaded' ? 'Imagen guardada en tus descargas.' : null),
-      () => setMessage('No se pudo compartir la imagen.'),
+      (result) =>
+        setMessage(result === 'downloaded' ? 'Imagen guardada en tus descargas. Si no la encuentras, usa «Ver imagen».' : null),
+      () => setMessage('No se pudo compartir la imagen. Prueba con «Ver imagen».'),
     );
   };
 
-  if (pointsQ.loading || emotionsQ.loading) return <p className="p-6 text-slate-400">Cargando…</p>;
+  // Solo se espera a los puntos: una consulta vacía y sin caché (sin emociones, por ejemplo) puede
+  // tardar unos segundos en responder sin red, y el informe puede pintarse ya sin ellas.
+  if (pointsQ.loading) return <p className="p-6 text-slate-400">Cargando…</p>;
+
+  const ready = image.status === 'ready' && report.played.length > 0;
 
   return (
     <div className="mx-auto h-full max-w-xl overflow-y-auto">
@@ -1632,16 +1738,25 @@ function Report({ uid, match, players }: { uid: string; match: Match; players: P
       <div className="space-y-2 p-4">
         <button
           onClick={share}
-          disabled={image.status !== 'ready' || report.played.length === 0}
+          disabled={!ready}
           className="h-14 w-full rounded-xl bg-blue-600 text-lg font-bold active:brightness-125 disabled:opacity-40"
         >
           {image.status === 'preparing' ? 'Preparando imagen…' : 'Compartir informe'}
+        </button>
+        <button
+          onClick={() => setPreviewing(true)}
+          disabled={!ready}
+          className="h-11 w-full rounded-xl bg-slate-800 font-bold active:brightness-125 disabled:opacity-40"
+        >
+          Ver imagen
         </button>
         {image.status === 'error' && (
           <p className="text-center text-sm text-red-400">No se pudo preparar la imagen: {image.message}</p>
         )}
         {message && <p className="text-center text-sm text-slate-400">{message}</p>}
       </div>
+
+      {previewing && image.status === 'ready' && <ImagePreview blob={image.blob} onClose={() => setPreviewing(false)} />}
     </div>
   );
 }
@@ -1749,7 +1864,17 @@ Si queda en "Preparando…" o aparece "No se pudo preparar la imagen": anotar el
 
 Pulsar "Compartir informe", elegir WhatsApp, enviarlo a uno mismo.
 Expected: llega una imagen legible (texto nítido, gráfico completo, fondo oscuro).
-Si el menú de compartir no se abre o da error, el plan B ya está implementado: la imagen se descarga; comprobar dónde queda en el iPhone y que se puede adjuntar a mano. Anotar cuál de los dos caminos ocurrió.
+Si el menú de compartir no se abre o da error, el plan B es la descarga del archivo; comprobar dónde queda en el iPhone y que se puede adjuntar a mano. Las descargas de archivos desde una app instalada en iOS pueden no funcionar, así que anotar cuál de los dos caminos ocurrió.
+
+- [ ] **Step 4b: "Ver imagen" (recurso de reserva)**
+
+Pulsar "Ver imagen" y mantener pulsada la imagen.
+Expected: iOS ofrece "Guardar en Fotos" y "Compartir". Es el camino que debe funcionar siempre; si falla, hay que replantear la exportación.
+
+- [ ] **Step 4c: El botón no parpadea**
+
+Con la app abierta en el informe, registrar o corregir un punto desde otro dispositivo (o esperar a que sincronicen puntos pendientes).
+Expected: el botón no vuelve a "Preparando imagen…" salvo que el contenido del informe haya cambiado de verdad.
 
 - [ ] **Step 5: Sin conexión**
 
@@ -1774,7 +1899,7 @@ Crear `docs/superpowers/plans/2026-11-15-tramo-2-comprobaciones.md` con fecha, v
 | Efecto de las emociones: 5 puntos siguientes, corte al acabar el set, no forzados suyos, resumen por jugador y etiqueta | 4, 8 |
 | Toda cifra con su número de casos; sin casos, "sin datos" | 3, 6, 8 |
 | Informe disponible con el partido sin terminar | 9 (la ruta no exige partido cerrado) |
-| Exportar como imagen y compartir (Web Share; descarga como alternativa) | 7, 9, 10 |
+| Exportar como imagen y compartir (Web Share; descarga y "Ver imagen" como alternativas) | 7, 8, 9, 10 |
 | Informe orden fijo de seis bloques | 8 |
 
 Fuera de este plan: modo vídeo, zona y pantalla de revisión (tramo 3); acumulados por jugador y pareja; enlace de solo lectura; PDF.

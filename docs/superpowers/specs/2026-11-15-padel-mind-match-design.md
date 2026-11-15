@@ -36,7 +36,7 @@ Una PWA para que un entrenador de pádel registre, a pie de pista o desde vídeo
 - Tailwind CSS. Solo tema oscuro, alto contraste.
 - `vite-plugin-pwa` para precachear todo el código de la app e instalarla en la pantalla de inicio.
 - Firebase: Firestore con caché local persistente y Firebase Auth con Google.
-- Recharts para el gráfico de momentum.
+- Gráfico de momentum: SVG propio, sin librería de gráficos. `html-to-image` genera la imagen del informe para compartirla.
 - Vitest para pruebas.
 - Vercel, con despliegue desde GitHub.
 
