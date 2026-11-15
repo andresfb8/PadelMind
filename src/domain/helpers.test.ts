@@ -9,11 +9,24 @@ const base: Situation = {
 };
 
 describe('nextOrder', () => {
-  it('empieza en 1', () => {
-    expect(nextOrder([])).toBe(1);
+  it('sin puntos previos (0) usa la hora actual', () => {
+    expect(nextOrder(0, 1700000000000)).toBe(1700000000000);
   });
-  it('suma 1 al último', () => {
-    expect(nextOrder([{ order: 1 }, { order: 2.5 }])).toBe(3.5);
+  it('si el último orden alcanza la hora, suma 1', () => {
+    expect(nextOrder(1700000000005, 1700000000000)).toBe(1700000000006);
+    expect(nextOrder(1700000000000, 1700000000000)).toBe(1700000000001);
+  });
+  it('órdenes pequeños de partidos antiguos quedan por debajo', () => {
+    expect(nextOrder(12, 1700000000000)).toBe(1700000000000);
+  });
+  it('crece estrictamente aunque se llame con la misma hora', () => {
+    const now = 1700000000000;
+    let last = 0;
+    for (let i = 0; i < 5; i++) {
+      const o = nextOrder(last, now);
+      expect(o).toBeGreaterThan(last);
+      last = o;
+    }
   });
 });
 

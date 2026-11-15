@@ -1,8 +1,9 @@
 import type { Situation } from './scoring';
 import type { EmotionTag, Outcome, Shot, Side } from './types';
 
-export function nextOrder(points: { order: number }[]): number {
-  return points.length === 0 ? 1 : points[points.length - 1].order + 1;
+// Orden del siguiente punto: la hora actual, salvo que el último orden ya la alcance (entonces +1).
+export function nextOrder(lastOrder: number, now: number): number {
+  return Math.max(now, lastOrder + 1);
 }
 
 const who = (s: Side) => (s === 'us' ? 'nosotros' : 'rival');

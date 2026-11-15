@@ -1,5 +1,5 @@
 import { orderBy, query } from 'firebase/firestore';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import EmotionSheet from '../components/EmotionSheet';
 import OutcomeButtons from '../components/OutcomeButtons';
@@ -26,6 +26,8 @@ export default function TrackerScreen() {
 }
 
 const SHOT_ROW_MS = 4000;
+// Ventana en la que se ignoran toques repetidos al registrar un punto (doble toque accidental).
+const TAP_LOCKOUT_MS = 350;
 
 function Tracker({ uid, match, players }: { uid: string; match: Match; players: Player[] }) {
   useWakeLock();
@@ -58,9 +60,18 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
   const locked = state.finished || closed;
   const lastPoint = points[points.length - 1];
 
+  // Último orden asignado y última pulsación aceptada: evitan órdenes repetidos y dobles registros.
+  const lastOrderRef = useRef(0);
+  const lastTapRef = useRef(0);
+
   const register = (outcome: Outcome, playerId: string | null) => {
     if (locked) return;
-    const id = addPoint(uid, match.id, { order: nextOrder(points), outcome, playerId });
+    const tapAt = Date.now();
+    if (tapAt - lastTapRef.current < TAP_LOCKOUT_MS) return;
+    lastTapRef.current = tapAt;
+    const order = nextOrder(Math.max(lastOrderRef.current, points[points.length - 1]?.order ?? 0), tapAt);
+    lastOrderRef.current = order;
+    const id = addPoint(uid, match.id, { order, outcome, playerId });
     // Solo los puntos de nuestra pareja con jugador ofrecen elegir golpe.
     setShotFor(playerId ? id : null);
   };
