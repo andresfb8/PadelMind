@@ -61,6 +61,21 @@ describe('emotionEffects', () => {
   it('ignora una emoción ligada a un punto que ya no existe', () => {
     expect(effects('UU', [emotion('e1', ANA, 'euforia', 'pt99')])).toEqual([]);
   });
+
+  it('las ordena por la posición de su punto, no por cuándo se anotaron', () => {
+    // e2 se añadió después (desde la revisión) pero cuelga de un punto anterior
+    const list = effects('UUUUUUUU', [
+      emotion('e1', ANA, 'nervios', 'pt5'),
+      emotion('e2', LUIS, 'euforia', 'pt2'),
+      emotion('e3', ANA, 'confianza', null),
+    ]);
+    expect(list.map((e) => e.emotionId)).toEqual(['e3', 'e2', 'e1']);
+  });
+
+  it('las emociones de un mismo punto conservan el orden en que se anotaron', () => {
+    const list = effects('UUUU', [emotion('a', ANA, 'nervios', 'pt2'), emotion('b', LUIS, 'euforia', 'pt2')]);
+    expect(list.map((e) => e.emotionId)).toEqual(['a', 'b']);
+  });
 });
 
 describe('emotionSummary', () => {

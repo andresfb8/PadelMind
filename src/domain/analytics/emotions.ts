@@ -35,11 +35,15 @@ export function emotionEffects(
 ): EmotionEffect[] {
   const effects: EmotionEffect[] = [];
 
-  for (const e of emotions) {
-    // `start` es el índice del punto tras el que se anotó la emoción (−1: antes del primero).
-    const start = e.afterPointId === null ? -1 : played.findIndex((p) => p.id === e.afterPointId);
-    if (e.afterPointId !== null && start === -1) continue; // el punto ya no existe
+  // `start` es el índice del punto tras el que se anotó la emoción (−1: antes del primero). Se ordenan por esa
+  // posición y no por cuándo se anotaron: una emoción añadida después, desde la revisión, debe salir en su sitio.
+  // El orden es estable: las de un mismo punto conservan el orden en que se anotaron.
+  const positioned = emotions
+    .map((e) => ({ e, start: e.afterPointId === null ? -1 : played.findIndex((p) => p.id === e.afterPointId) }))
+    .filter(({ e, start }) => e.afterPointId === null || start !== -1) // el punto ya no existe
+    .sort((a, b) => a.start - b.start);
 
+  for (const { e, start } of positioned) {
     const emotionSet = start === -1 ? (contexts[0]?.setIndex ?? 0) : contexts[start].setIndex;
     let won = 0;
     let total = 0;
