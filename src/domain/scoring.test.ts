@@ -33,6 +33,10 @@ describe('pointWinner', () => {
     expect(pointWinner('winner_rival')).toBe('them');
     expect(pointWinner('rival_sin_detalle')).toBe('them');
   });
+
+  it('falla con un resultado desconocido', () => {
+    expect(() => pointWinner('inventado' as never)).toThrow('Resultado de punto desconocido: inventado');
+  });
 });
 
 describe('juego', () => {
@@ -135,7 +139,7 @@ describe('tie-break', () => {
 
   it('se gana a 7 y el set queda 7-6; resta primero quien sacó primero', () => {
     const s = run(SIX_ALL + 'U'.repeat(7));
-    expect(s.completedSets).toEqual([{ us: 7, them: 6 }]);
+    expect(s.completedSets).toEqual([{ us: 7, them: 6, tiebreak: { us: 7, them: 0 } }]);
     expect(s.situation).toMatchObject({ setIndex: 1, gamesUs: 0, server: 'them' });
   });
 
@@ -143,7 +147,7 @@ describe('tie-break', () => {
     const sixSix = SIX_ALL + 'UT'.repeat(6);
     expect(run(sixSix).situation).toMatchObject({ scoreLabel: '6-6', isSetPoint: null });
     expect(run(sixSix + 'U').situation).toMatchObject({ scoreLabel: '7-6', isSetPoint: 'us' });
-    expect(run(sixSix + 'UU').completedSets).toEqual([{ us: 7, them: 6 }]);
+    expect(run(sixSix + 'UU').completedSets).toEqual([{ us: 7, them: 6, tiebreak: { us: 8, them: 6 } }]);
   });
 });
 
@@ -192,7 +196,7 @@ describe('casos adicionales', () => {
 
   it('tie-break que pasa de 7 (9-7)', () => {
     const s = run(SIX_ALL + 'UT'.repeat(6) + 'UTUU');
-    expect(s.completedSets).toEqual([{ us: 7, them: 6 }]);
+    expect(s.completedSets).toEqual([{ us: 7, them: 6, tiebreak: { us: 9, them: 7 } }]);
     expect(s.situation).toMatchObject({ setIndex: 1, gamesUs: 0, server: 'them' });
   });
 
@@ -201,5 +205,46 @@ describe('casos adicionales', () => {
     expect(s.finished).toBe(true);
     expect(s.winner).toBe('us');
     expect(s.completedSets).toEqual([{ us: 0, them: 6 }, { us: 6, them: 0 }, { us: 10, them: 0 }]);
+  });
+});
+
+describe('regresiones del motor', () => {
+  it('tras un set ganado 6-3 sacando nosotros primero, saca el rival el primer juego del set 2', () => {
+    const s = run(game('U').repeat(3) + game('T').repeat(3) + game('U').repeat(3), GOLD, 'us');
+    expect(s.completedSets).toEqual([{ us: 6, them: 3 }]);
+    expect(s.situation).toMatchObject({ setIndex: 1, server: 'them' });
+  });
+
+  it('súper tie-break tras un número impar de juegos: saca primero el rival', () => {
+    // set 1: 6-0 nuestro (6 juegos); set 2: 6-1 del rival (7 juegos); 13 juegos en total
+    const sets12 = game('U').repeat(6) + game('U') + game('T').repeat(6);
+    const s = run(sets12 + 'UTUTUT', SUPER, 'us');
+    expect(s.completedSets).toEqual([{ us: 6, them: 0 }, { us: 1, them: 6 }]);
+    const servers = s.contexts.slice(52, 58).map((c) => c.server);
+    expect(servers).toEqual(['them', 'us', 'us', 'them', 'them', 'us']);
+  });
+
+  it('el rival gana 6-0 el tie-break del set 2 tras ganar el set 1: bola de set y de partido para él', () => {
+    const s = run(game('T').repeat(6) + SIX_ALL + 'T'.repeat(6), GOLD, 'us');
+    expect(s.situation).toMatchObject({ setIndex: 1, isTiebreak: true, isSetPoint: 'them', isMatchPoint: 'them' });
+  });
+
+  it('punto de oro en 6-5 con el rival sacando: bola de set y de break para nosotros', () => {
+    const fiveAll = (game('U') + game('T')).repeat(5);
+    const s = run(fiveAll + game('U') + 'UUUTTT', GOLD, 'us');
+    expect(s.situation).toMatchObject({
+      gamesUs: 6, gamesThem: 5, server: 'them', isGoldenPoint: true,
+      isSetPoint: 'us', isBreakPoint: 'us', servingForSet: null,
+    });
+  });
+
+  it('sin puntos: 0-0, saca quien empieza y no hay contextos ni sobrantes', () => {
+    const s = computeMatchState([], GOLD, 'us');
+    expect(s.situation).toMatchObject({ gamesUs: 0, gamesThem: 0, scoreLabel: '0-0', server: 'us' });
+    expect(s.finished).toBe(false);
+    expect(s.winner).toBe(null);
+    expect(s.contexts).toEqual([]);
+    expect(s.extraPointIds).toEqual([]);
+    expect(s.completedSets).toEqual([]);
   });
 });

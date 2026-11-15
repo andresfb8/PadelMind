@@ -1,7 +1,7 @@
 import type { MatchFormat, Outcome, Point, Side } from './types';
 
 export type GameKind = 'normal' | 'tiebreak' | 'super_tiebreak';
-export type SetScore = { us: number; them: number };
+export type SetScore = { us: number; them: number; tiebreak?: { us: number; them: number } };
 
 export type Situation = {
   setIndex: number;
@@ -52,9 +52,21 @@ const games = (l: Live, s: Side) => (s === 'us' ? l.gamesUs : l.gamesThem);
 const sets = (l: Live, s: Side) => (s === 'us' ? l.setsUs : l.setsThem);
 
 export function pointWinner(outcome: Outcome): Side {
-  return outcome === 'winner_nuestro' || outcome === 'error_rival' || outcome === 'nuestro_sin_detalle'
-    ? 'us'
-    : 'them';
+  switch (outcome) {
+    case 'winner_nuestro':
+    case 'error_rival':
+    case 'nuestro_sin_detalle':
+      return 'us';
+    case 'no_forzado_nuestro':
+    case 'forzado_nuestro':
+    case 'winner_rival':
+    case 'rival_sin_detalle':
+      return 'them';
+    default: {
+      const unknown: never = outcome;
+      throw new Error(`Resultado de punto desconocido: ${String(unknown)}`);
+    }
+  }
 }
 
 // ¿Gana el juego quien tiene p puntos frente a q?
@@ -146,6 +158,7 @@ function applyPoint(l: Live, wonBy: Side, format: MatchFormat) {
   }
 
   const wasTiebreak = l.kind === 'tiebreak';
+  const tiebreak = { us: l.ptsUs, them: l.ptsThem };
   if (wonBy === 'us') l.gamesUs++;
   else l.gamesThem++;
   l.ptsUs = 0;
@@ -155,12 +168,19 @@ function applyPoint(l: Live, wonBy: Side, format: MatchFormat) {
   const g = games(l, wonBy);
   const o = games(l, other(wonBy));
   if (wasTiebreak || (g >= 6 && g - o >= 2)) {
-    closeSet(l, wonBy, { us: l.gamesUs, them: l.gamesThem }, format);
+    closeSet(
+      l,
+      wonBy,
+      wasTiebreak ? { us: l.gamesUs, them: l.gamesThem, tiebreak } : { us: l.gamesUs, them: l.gamesThem },
+      format,
+    );
   } else if (l.gamesUs === 6 && l.gamesThem === 6) {
     l.kind = 'tiebreak';
   }
 }
 
+// `points` debe venir ya ordenado por `order` ascendente (la consulta de Firestore
+// hace `orderBy('order')`); la función no reordena.
 export function computeMatchState(points: Point[], format: MatchFormat, firstServer: Side): MatchState {
   const l: Live = {
     setsUs: 0,
