@@ -10,6 +10,7 @@ import { pairName, playerName, useCoachData } from '../data/CoachData';
 import { addEmotion, addPoint, setPointShot, undoPoint, updateMatch } from '../data/mutations';
 import { emotionsCol, pointsCol } from '../data/paths';
 import { useQuery } from '../data/useQuery';
+import { usePendingWrites } from '../data/writeErrors';
 import { nextOrder } from '../domain/helpers';
 import { computeMatchState } from '../domain/scoring';
 import type { Emotion, EmotionTag, Match, Outcome, Player, Point, Shot } from '../domain/types';
@@ -36,6 +37,7 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
   const emotionsQ = useQuery<Emotion>(
     useMemo(() => query(emotionsCol(uid, match.id), orderBy('timestamp')), [uid, match.id]),
   );
+  const pendingWrites = usePendingWrites();
   const points = pointsQ.data;
   const emotions = emotionsQ.data;
 
@@ -104,14 +106,13 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
   return (
     <div
       className="mx-auto flex h-full max-w-xl flex-col gap-2 p-3"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.75rem)', paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
     >
       <div className="flex items-center justify-between text-sm text-slate-400">
-        <Link to="/">← Partidos</Link>
+        <Link to="/" className="py-2">← Partidos</Link>
         {!closed && (
           <div className="flex gap-4">
-            <button onClick={swapSides}>⇄ Cambiar lados</button>
-            <button onClick={finish} className={state.finished ? 'font-bold text-green-400' : ''}>
+            <button onClick={swapSides} className="px-2 py-2">⇄ Cambiar lados</button>
+            <button onClick={finish} className={`px-2 py-2 ${state.finished ? 'font-bold text-green-400' : ''}`}>
               Finalizar partido
             </button>
           </div>
@@ -124,7 +125,7 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
         themName={match.opponentsName}
         state={state}
       />
-      <SyncBadge hasPending={pointsQ.hasPending || emotionsQ.hasPending} pendingPoints={pointsQ.pending} />
+      <SyncBadge hasPending={pointsQ.hasPending || emotionsQ.hasPending || pendingWrites > 0} pendingPoints={pointsQ.pending} />
 
       {/* La fila de golpes flota sobre este hueco: nunca cambia el layout ni mueve los botones. */}
       <div className="relative min-h-0 flex-1">

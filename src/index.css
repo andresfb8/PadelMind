@@ -2,6 +2,12 @@
 
 html, body, #root { height: 100%; }
 
+#root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 body {
   background: #0b0f14;
   color: #e8edf2;

@@ -6,7 +6,7 @@ export type QueryState<T> = {
   data: T[];
   loading: boolean;
   pending: number;      // documentos con escrituras sin sincronizar
-  hasPending: boolean;  // hay algún cambio sin sincronizar, incluidos borrados
+  hasPending: boolean;  // metadata.hasPendingWrites: NO se activa con borrados pendientes (ver usePendingWrites)
 };
 
 // `q` debe venir de useMemo: una consulta nueva en cada render reiniciaría la suscripción.

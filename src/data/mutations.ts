@@ -1,13 +1,17 @@
-import { deleteDoc, doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { EMOTION_LABEL, OUTCOME_LABEL } from '../domain/helpers';
 import type { Emotion, EmotionTag, Match, MatchFormat, Outcome, Player, Point, Shot, Side } from '../domain/types';
 import { db } from './firebase';
 import { emotionsCol, matchesCol, pairsCol, playersCol, pointsCol } from './paths';
-import { reportWriteError } from './writeErrors';
+import { reportWriteError, writeSettled, writeStarted } from './writeErrors';
 
 // Lanza la escritura sin esperarla y avisa si el servidor la rechaza.
+// Cuenta las escrituras en vuelo para que el aviso de sincronización también cubra borrados pendientes.
 function fire(write: Promise<void>, what: string) {
-  write.catch(() => reportWriteError(`No se pudo guardar: ${what}`));
+  writeStarted();
+  write
+    .catch(() => reportWriteError(`No se pudo guardar: ${what}`))
+    .finally(writeSettled);
 }
 
 export function createPlayer(uid: string, name: string, side: Player['side']): string {
@@ -84,8 +88,4 @@ export function addEmotion(
   const ref = doc(emotionsCol(uid, matchId));
   fire(setDoc(ref, { ...input, timestamp: Date.now() }), `emoción ${EMOTION_LABEL[input.tag]}`);
   return ref.id;
-}
-
-export function deleteEmotion(uid: string, matchId: string, emotionId: string) {
-  fire(deleteDoc(doc(emotionsCol(uid, matchId), emotionId)), 'borrar emoción');
 }

@@ -44,10 +44,10 @@ export default function OutcomeButtons(props: {
         </button>
       </div>
       <div className="flex gap-2">
-        <button disabled={disabled} onClick={() => onRegister('nuestro_sin_detalle', null)} className={`${BTN} h-10 flex-1 bg-slate-700 text-sm`}>
+        <button disabled={disabled} onClick={() => onRegister('nuestro_sin_detalle', null)} className={`${BTN} h-11 flex-1 bg-slate-700 text-sm`}>
           Punto nuestro
         </button>
-        <button disabled={disabled} onClick={() => onRegister('rival_sin_detalle', null)} className={`${BTN} h-10 flex-1 bg-slate-700 text-sm`}>
+        <button disabled={disabled} onClick={() => onRegister('rival_sin_detalle', null)} className={`${BTN} h-11 flex-1 bg-slate-700 text-sm`}>
           Punto rival
         </button>
       </div>

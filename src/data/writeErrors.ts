@@ -14,6 +14,19 @@ export function clearWriteErrors() {
   emit();
 }
 
+// Escrituras lanzadas y aún no resueltas (también cubre borrados, que hasPendingWrites no refleja).
+let inFlight = 0;
+
+export function writeStarted() {
+  inFlight += 1;
+  emit();
+}
+
+export function writeSettled() {
+  inFlight = Math.max(0, inFlight - 1);
+  emit();
+}
+
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {
@@ -22,3 +35,4 @@ function subscribe(listener: () => void) {
 }
 
 export const useWriteErrors = () => useSyncExternalStore(subscribe, () => errors);
+export const usePendingWrites = () => useSyncExternalStore(subscribe, () => inFlight);
