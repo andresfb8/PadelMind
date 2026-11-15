@@ -4,32 +4,43 @@
 
 **Goal:** Poder registrar un partido desde un vídeo (golpe y zona a la vista hasta el siguiente punto) y completar o corregir después cualquier partido, punto por punto, desde una pantalla de revisión.
 
-**Architecture:** Dos piezas sobre los mismos datos. El modo vídeo solo cambia cuánto muestra la pantalla de registro. La revisión lista los puntos con el marcador previo de cada uno y abre un panel para editarlos. La lógica (orden de un punto insertado, filas de revisión, validación del borrador) es pura y está probada; los componentes la pintan y llaman a mutaciones que, como siempre, no esperan a Firestore. Como el marcador se calcula a partir de la lista, cualquier corrección lo rehace solo.
+**Architecture:** Dos piezas sobre los mismos datos. El modo vídeo solo cambia cuánto muestra la pantalla de registro. La revisión lista los puntos con el marcador previo de cada uno y abre un panel para editarlos. La lógica (orden de un punto insertado, filas de revisión, validación del borrador, fechas) es pura y está probada; los componentes la pintan y llaman a mutaciones que, como siempre, no esperan a Firestore. Como el marcador se calcula a partir de la lista, cualquier corrección lo rehace solo.
 
 **Tech Stack:** TypeScript, React 19, Tailwind v4, Vitest, Firestore (sin cambios en las reglas ni en la estructura de datos).
 
 **Spec:** `docs/superpowers/specs/2026-11-15-padel-mind-match-design.md`, secciones 7 (Registro, modo vídeo, Revisión) y 4 (orden de los puntos). Este plan cubre solo el tramo 3. Fuera: acumulados entre partidos, vídeo dentro de la app, usar la zona en el informe (la spec no lo pide).
 
-**Código ya probado.** Todo el código de este plan se escribió y se ejecutó antes de redactarlo:
+## Qué está comprobado y qué no
 
-- 24 pruebas nuevas pasan (110 en total); `tsc` y `vite build` terminan sin errores.
-- `ReviewScreen` y `TrackerScreen` reales se ejecutaron en un navegador con una capa de datos simulada que se comporta como Firestore (añade, corrige, inserta y borra en una lista ordenada). Se comprobó: completar la zona de un punto; convertir un punto sin detalle en winner de Luis (pide el jugador antes de guardar); cambiar a "winner rival" descarta jugador, golpe y zona; insertar antes del primero (orden 999), entre dos puntos (2500) y al final; borrar un punto con sus 2 emociones; añadir una emoción; cambiar saque, formato y nombre de los rivales (un nombre vacío no se guarda); el filtro "Por completar".
-- Modo vídeo: en directo la fila de golpes se cierra sola a los ~4 s; en vídeo se queda, muestra golpe y zona, se puede elegir y quitar tocando otra vez, un punto del rival la cierra, el siguiente punto de tu pareja la abre sin selección y deshacer la cierra.
-- Medido a 375×667 px: el panel de vídeo (148 px) no llega a los botones de punto.
+**Ejecutado y verificado** (todo el código de este plan se escribió y se ejecutó antes de redactarlo):
 
-**No** se ejecutó con Firestore real ni en un iPhone: de eso trata la Tarea 7. Un detalle del entorno de pruebas: con la ventana del navegador sin foco no se emiten los eventos de foco, así que el guardado del nombre de los rivales (al salir del campo) se probó emitiendo ese evento a mano.
+- **30 pruebas nuevas** pasan (116 en total); `tsc` y `vite build` terminan sin errores.
+- **Pantallas reales con una capa de datos simulada** que se comporta como Firestore (añade, corrige, inserta y borra en una lista ordenada), con los archivos finales de `ReviewScreen`, `TrackerScreen`, `NewMatchScreen` y `HomeScreen`:
+  - Revisión: completar la zona de un punto; convertir un punto sin detalle en winner de Luis (pide el jugador antes de guardar); cambiar a "winner rival" descarta jugador, golpe y zona; insertar antes del primero (orden 999), entre dos puntos (2500) y al final; borrar un punto con sus 2 emociones; añadir una emoción; el filtro "Por completar"; "Guardar y pasar al siguiente" abre el punto 3 tras guardar el 2; cerrar o insertar con cambios sin guardar pregunta (y si dices que no, sigue abierto); cambiar saque, formato, nombre de los rivales (un nombre vacío no se guarda) y fecha (una fecha vacía no se guarda).
+  - Registro: en directo la fila de golpes se cierra sola a los ~4 s; en vídeo se queda, muestra golpe y zona, se puede elegir y quitar tocando otra vez, un punto del rival la cierra, el siguiente punto de tu pareja la abre sin selección y deshacer la cierra. Los botones miden 64 px en directo y 48 px en vídeo.
+  - Alta: la fecha solo aparece en modo vídeo, por defecto es hoy; el partido se crea con la fecha elegida y se abre en modo vídeo.
+  - Lista de partidos: los botones "Informe" y "Revisión" apilados caben a 375 px sin desbordar.
+- **Medidas del panel de vídeo:** a 393×759 no tapa ni el marcador ni el selector de modo ni los botones; a 375×667 y 375×647 (iPhone SE) deja visibles las dos filas del marcador y tapa solo el selector de modo y el indicador de sincronización.
+
+**Solo compilado, no ejecutado:** `mutations.ts` (las llamadas reales a Firestore: la capa simulada replica su comportamiento, pero `setDoc`, `updateDoc` y `writeBatch` solo se han comprobado con tipos; tienen la misma forma que las ya existentes) y el enlace nuevo de `ReportScreen`.
+
+**No comprobado en un iPhone real:** de eso trata la Tarea 9. Un detalle del entorno de pruebas: con la ventana del navegador sin foco no se emiten los eventos de foco, así que el guardado del nombre de los rivales (al salir del campo) se probó emitiendo ese evento a mano.
 
 ## Decisiones tomadas (la spec las deja abiertas)
 
-- **Los cambios de un punto se guardan con "Guardar"**, no al vuelo: así el marcador no se rehace a medias mientras eliges. Las emociones (añadir o quitar) y el borrado se aplican al momento.
+- **Los cambios de un punto se guardan con "Guardar"**, no al vuelo: así el marcador no se rehace a medias mientras eliges. Las emociones (añadir o quitar) y el borrado se aplican al momento. Cerrar el panel o saltar a "Insertar antes/después" con cambios sin guardar pide confirmación.
+- **"Guardar y pasar al siguiente por completar":** para completar muchos puntos seguidos sin volver a la lista. Solo aparece si queda algún punto por completar más adelante.
 - **Insertar un punto:** abre el mismo panel vacío; no se guarda hasta elegir cómo acabó (y el jugador, si hace falta). Su orden es el valor intermedio entre sus vecinos, así que no se reescribe ningún otro punto. Con los vecinos pegados hasta el límite numérico (muy improbable: órdenes en milisegundos) avisa en vez de insertar mal.
 - **Un punto sin jugador** (del rival o sin detalle) no lleva golpe ni zona: al cambiar el resultado se descartan.
 - **Borrar un punto** pide confirmación y borra también sus emociones (spec §4).
 - **Puntos sobrantes** (registrados después de terminar el partido) aparecen atenuados con "Sobrante" y se pueden editar o borrar como los demás.
 - **Qué cuenta como "por completar":** un punto sin detalle (falta la causa) y un winner, no forzado o forzado nuestro sin golpe o sin zona.
+- **Fecha del partido:** un partido registrado desde un vídeo se transcribe otro día; la fecha manda en el orden de la lista, en el informe y en el nombre del archivo. Se puede elegir al crearlo en modo vídeo (campo "Fecha en que se jugó") y corregir siempre en "Datos del partido". Se guarda como el mediodía local de ese día.
+- **Las emociones del informe se ordenan por la posición de su punto**, no por cuándo se anotaron: una emoción añadida después desde la revisión sale en su sitio.
 - **El timestamp de un punto insertado** es la hora en que se registra, no la del juego (como ya decía la spec).
+- **Modo vídeo con botones más bajos** (48 px en vez de 64) para dejar sitio al panel de golpe y zona sin que nada se mueva al abrirse. Sigue por encima de los 44 px recomendados.
 - **Selector de modo** en la fila del indicador de sincronización del registro. No hay enlace a la revisión dentro del registro (no cabe en la barra superior de 375 px): se llega desde cada partido de la lista ("Revisión") y desde el informe ("Revisar puntos").
-- **Limitación conocida:** en modo vídeo el panel de golpe y zona queda abierto y, en móviles pequeños, tapa parte del marcador y el selector de modo (en un 375×667 queda visible solo la fila de tu pareja). Se compactó al máximo; en la Tarea 7 hay que comprobar si molesta en tu iPhone.
+- **Limitación conocida:** en un iPhone pequeño, mientras el panel de vídeo está abierto, el selector de modo y el indicador de sincronización quedan tapados. Basta con cerrar el panel (un punto del rival) o esperar al siguiente punto. En la Tarea 9 hay que comprobar si molesta.
 - **`undoPoint` pasa a delegar en `deletePoint`**, con el mismo comportamiento.
 
 ---
@@ -40,24 +51,27 @@
 src/domain/
   ordering.ts          orden de un punto insertado entre dos vecinos
   review.ts            filas de revisión y borrador de un punto
+  format.ts            (modificado) fechas para el campo de fecha
+  helpers.ts           (modificado) ZONES y ZONE_LABEL
+  analytics/emotions.ts  (modificado) efectos de emociones ordenados por posición
   *.test.ts            una prueba por módulo
 src/components/
   Choice.tsx           pregunta con botones (se saca de NewMatchScreen para compartirla)
   ModeToggle.tsx       selector En directo / Desde vídeo
+  OutcomeButtons.tsx   (modificado) versión compacta para el modo vídeo
   ShotRow.tsx          (modificado) fila de golpes, con fila de zona en modo vídeo
   review/PointEditor.tsx       panel para completar, corregir o crear un punto
-  review/MatchDataEditor.tsx   datos del partido (rivales, formato, saque)
+  review/MatchDataEditor.tsx   datos del partido (rivales, fecha, formato, saque)
 src/screens/
   ReviewScreen.tsx     la pantalla de revisión
-  NewMatchScreen.tsx   (modificado) elige el modo
+  NewMatchScreen.tsx   (modificado) elige el modo y, en vídeo, la fecha
   TrackerScreen.tsx    (modificado) modo vídeo y selector de modo
   HomeScreen.tsx  ReportScreen.tsx   (modificados) enlaces a la revisión
-src/data/mutations.ts  (modificado) updatePoint, insertPoint, deletePoint, deleteEmotion, setPointZone
-src/domain/helpers.ts  (modificado) ZONES y ZONE_LABEL
+src/data/mutations.ts  (modificado) updatePoint, insertPoint, deletePoint, deleteEmotion, setPointZone, fecha
 src/App.tsx            (modificado) ruta de la revisión
 ```
 
-Recuento de pruebas al terminar cada tarea (hoy: 86): T1 → 97, T2 → 110. Las tareas 3 a 6 no añaden pruebas.
+Recuento de pruebas al terminar cada tarea (hoy: 86): T1 → 97, T2 → 110, T3 → 114, T4 → 116. Las tareas 5 a 8 no añaden pruebas.
 
 ---
 
@@ -384,7 +398,367 @@ git commit -m "Filas de revisión y borrador de un punto"
 
 ---
 
-### Task 3: Capa de datos, zonas y selector de modo al crear el partido
+### Task 3: Fechas para el campo de fecha
+
+**Files:**
+- Modify: `src/domain/format.ts`, `src/domain/format.test.ts`
+
+Dos funciones puras: de milisegundos al texto `2026-11-15` de un `<input type="date">`, y de ese texto al mediodía local de ese día (null si no es una fecha válida). `reportFileName` pasa a usar la primera.
+
+- [ ] **Step 1: Reemplazar `src/domain/format.test.ts` entero**
+
+Es el test que ya existe más un bloque nuevo al final ("fechas del campo de fecha", 4 pruebas).
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { dateFromInput, dateInputValue, formatLabel, percentText, ratioText, ratioValue, reportFileName, signed } from './format';
+
+describe('percentText y ratioText', () => {
+  it('redondea el porcentaje', () => {
+    expect(percentText({ won: 5, total: 13 })).toBe('38 %');
+    expect(percentText({ won: 1, total: 1 })).toBe('100 %');
+  });
+  it('sin casos no inventa un porcentaje', () => {
+    expect(percentText({ won: 0, total: 0 })).toBe('sin datos');
+    expect(ratioValue({ won: 0, total: 0 })).toBeNull();
+  });
+  it('muestra ganados sobre jugados', () => {
+    expect(ratioText({ won: 3, total: 8 })).toBe('3/8');
+    expect(ratioValue({ won: 3, total: 8 })).toBe(0.375);
+  });
+});
+
+describe('signed', () => {
+  it('pone el signo', () => {
+    expect([signed(3), signed(-5), signed(0)]).toEqual(['+3', '−5', '0']);
+  });
+});
+
+describe('formatLabel', () => {
+  it('describe el formato del partido', () => {
+    expect(formatLabel({ deuce: 'punto_de_oro', finalSet: 'set_completo' })).toBe('Punto de oro');
+    expect(formatLabel({ deuce: 'ventajas', finalSet: 'super_tiebreak' })).toBe('Ventajas · súper tie-break');
+  });
+});
+
+describe('reportFileName', () => {
+  const day = new Date(2026, 10, 15).getTime(); // 15 nov 2026, hora local
+  it('quita tildes y símbolos y añade la fecha', () => {
+    expect(reportFileName('Andrés / Pedro vs Los Cuñados', day)).toBe('informe-andres-pedro-vs-los-cunados-2026-11-15.png');
+  });
+  it('con un nombre vacío usa "partido"', () => {
+    expect(reportFileName('???', day)).toBe('informe-partido-2026-11-15.png');
+  });
+});
+
+describe('fechas del campo de fecha', () => {
+  it('dateInputValue da año-mes-día en hora local', () => {
+    expect(dateInputValue(new Date(2026, 10, 5, 23, 59).getTime())).toBe('2026-11-05');
+  });
+
+  it('dateFromInput devuelve el mediodía local de ese día', () => {
+    expect(dateFromInput('2026-11-05')).toBe(new Date(2026, 10, 5, 12).getTime());
+  });
+
+  it('ida y vuelta sin saltos de día', () => {
+    expect(dateInputValue(dateFromInput('2026-03-29') as number)).toBe('2026-03-29');
+  });
+
+  it('rechaza lo que no es una fecha', () => {
+    for (const value of ['', 'abc', '2026-13-01', '2026-02-30', '26-11-05']) expect(dateFromInput(value)).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Ejecutar y comprobar que falla**
+
+Run: `npx vitest run src/domain/format.test.ts`
+Expected: FAIL en las 4 pruebas nuevas (`dateInputValue` y `dateFromInput` no existen); las anteriores pasan.
+
+- [ ] **Step 3: Reemplazar `src/domain/format.ts` entero**
+
+```ts
+import type { Ratio } from './analytics/types';
+import type { MatchFormat } from './types';
+
+export const ratioText = (r: Ratio) => `${r.won}/${r.total}`;
+
+export const percentText = (r: Ratio) => (r.total === 0 ? 'sin datos' : `${Math.round((r.won / r.total) * 100)} %`);
+
+// Proporción entre 0 y 1, o null si no hay casos.
+export const ratioValue = (r: Ratio): number | null => (r.total === 0 ? null : r.won / r.total);
+
+export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+
+export function formatLabel(f: MatchFormat): string {
+  const deuce = f.deuce === 'punto_de_oro' ? 'Punto de oro' : 'Ventajas';
+  return f.finalSet === 'super_tiebreak' ? `${deuce} · súper tie-break` : deuce;
+}
+
+// Fecha en el formato de un campo <input type="date"> ("2026-11-15"), en hora local.
+export function dateInputValue(ms: number): string {
+  const d = new Date(ms);
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+}
+
+// De "2026-11-15" al mediodía local de ese día (el mediodía evita saltos de día por la zona horaria).
+// Devuelve null si no es una fecha válida.
+export function dateFromInput(value: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(year, month - 1, day, 12);
+  const valid = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  return valid ? date.getTime() : null;
+}
+
+// "informe-ana-luis-2026-11-15.png": sin tildes ni símbolos, en minúsculas.
+export function reportFileName(label: string, date: number): string {
+  const slug = label
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `informe-${slug || 'partido'}-${dateInputValue(date)}.png`;
+}
+```
+
+- [ ] **Step 4: Ejecutar y comprobar que pasa**
+
+Run: `npm test` y `npx tsc`
+Expected: 114 pruebas pasan; `tsc` sin salida.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/domain/format.ts src/domain/format.test.ts
+git commit -m "Fechas para el campo de fecha"
+```
+
+---
+
+### Task 4: Las emociones del informe, por la posición de su punto
+
+**Files:**
+- Modify: `src/domain/analytics/emotions.ts`, `src/domain/analytics/emotions.test.ts`
+
+Problema: una emoción añadida desde la revisión recibe la hora actual y el informe las lista por hora, así que saldría al final aunque cuelgue de un punto anterior. `emotionEffects` pasa a ordenarlas por la posición de su punto (ordenación estable: las de un mismo punto conservan el orden de anotación).
+
+- [ ] **Step 1: Reemplazar `src/domain/analytics/emotions.test.ts` entero**
+
+Es el test que ya existe más dos pruebas nuevas dentro de `describe('emotionEffects')`: "las ordena por la posición de su punto, no por cuándo se anotaron" y "las emociones de un mismo punto conservan el orden en que se anotaron".
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { EMOTION_WINDOW, emotionEffects, emotionSummary, situationLabel } from './emotions';
+import { ANA, emotion, gameUs, LUIS, run } from './fixtures';
+
+const effects = (spec: string, emotions: ReturnType<typeof emotion>[]) => {
+  const { state, played } = run(spec);
+  return emotionEffects(played, state.contexts, emotions, state.situation);
+};
+
+describe('emotionEffects', () => {
+  it('mira los 5 puntos siguientes a la emoción', () => {
+    expect(EMOTION_WINDOW).toBe(5);
+    // pt1 ganado por nosotros; tras él, Ana comete dos no forzados en 5 puntos que perdemos todos
+    const [effect] = effects('UxTTxTUUUU', [emotion('e1', ANA, 'frustracion', 'pt1')]);
+    expect(effect).toMatchObject({
+      emotionId: 'e1',
+      playerId: ANA,
+      tag: 'frustracion',
+      contextLabel: 'Set 1 · 0-0 · 15-0',
+      window: { won: 0, total: 5 },
+      unforcedByPlayer: 2,
+    });
+  });
+
+  it('solo cuenta los no forzados del jugador de la emoción', () => {
+    const [effect] = effects('UxyTTT', [emotion('e1', ANA, 'nervios', 'pt1')]);
+    expect(effect.unforcedByPlayer).toBe(1);
+  });
+
+  it('si quedan menos de 5 puntos, mira los que haya', () => {
+    const [effect] = effects('UUUUUUUUTU', [emotion('e1', LUIS, 'euforia', 'pt8')]);
+    expect(effect.window).toEqual({ won: 1, total: 2 });
+  });
+
+  it('corta la ventana al acabar el set', () => {
+    // 24 puntos ganan el primer set 6-0; después, cuatro puntos del rival ya en el segundo set
+    const spec = gameUs.repeat(6) + 'TTTT';
+    const [effect] = effects(spec, [emotion('e1', ANA, 'confianza', 'pt22')]);
+    expect(effect.window).toEqual({ won: 2, total: 2 }); // pt23 y pt24, ambos del primer set
+  });
+
+  it('una emoción tras el último punto de un set no tiene ventana', () => {
+    const spec = gameUs.repeat(6) + 'TTTT';
+    const [effect] = effects(spec, [emotion('e1', ANA, 'euforia', 'pt24')]);
+    expect(effect.window).toEqual({ won: 0, total: 0 });
+    expect(effect.contextLabel).toBe('Set 2 · 0-0 · 0-0');
+  });
+
+  it('una emoción anotada antes del primer punto mira desde el principio', () => {
+    const [effect] = effects('TTUUUU', [emotion('e1', ANA, 'nervios', null)]);
+    expect(effect.window).toEqual({ won: 3, total: 5 });
+    expect(effect.contextLabel).toBe('Set 1 · 0-0 · 0-0');
+  });
+
+  it('una emoción tras el último punto usa la situación actual', () => {
+    const [effect] = effects('UU', [emotion('e1', ANA, 'euforia', 'pt2')]);
+    expect(effect.window).toEqual({ won: 0, total: 0 });
+    expect(effect.contextLabel).toBe('Set 1 · 0-0 · 30-0');
+  });
+
+  it('ignora una emoción ligada a un punto que ya no existe', () => {
+    expect(effects('UU', [emotion('e1', ANA, 'euforia', 'pt99')])).toEqual([]);
+  });
+
+  it('las ordena por la posición de su punto, no por cuándo se anotaron', () => {
+    // e2 se añadió después (desde la revisión) pero cuelga de un punto anterior
+    const list = effects('UUUUUUUU', [
+      emotion('e1', ANA, 'nervios', 'pt5'),
+      emotion('e2', LUIS, 'euforia', 'pt2'),
+      emotion('e3', ANA, 'confianza', null),
+    ]);
+    expect(list.map((e) => e.emotionId)).toEqual(['e3', 'e2', 'e1']);
+  });
+
+  it('las emociones de un mismo punto conservan el orden en que se anotaron', () => {
+    const list = effects('UUUU', [emotion('a', ANA, 'nervios', 'pt2'), emotion('b', LUIS, 'euforia', 'pt2')]);
+    expect(list.map((e) => e.emotionId)).toEqual(['a', 'b']);
+  });
+});
+
+describe('emotionSummary', () => {
+  it('agrupa por jugador y etiqueta sumando sus ventanas', () => {
+    const list = effects('UxTTxTUUUUTT', [
+      emotion('e1', ANA, 'frustracion', 'pt1'),
+      emotion('e2', LUIS, 'euforia', 'pt1'),
+      emotion('e3', ANA, 'frustracion', 'pt7'),
+    ]);
+    expect(emotionSummary(list)).toEqual([
+      { playerId: ANA, tag: 'frustracion', count: 2, afterTag: { won: 3, total: 10 } },
+      { playerId: LUIS, tag: 'euforia', count: 1, afterTag: { won: 0, total: 5 } },
+    ]);
+  });
+});
+
+describe('situationLabel', () => {
+  it('numera los sets desde 1', () => {
+    expect(situationLabel({ setIndex: 1, gamesUs: 4, gamesThem: 3, scoreLabel: '30-30' })).toBe('Set 2 · 4-3 · 30-30');
+  });
+});
+```
+
+- [ ] **Step 2: Ejecutar y comprobar que falla**
+
+Run: `npx vitest run src/domain/analytics/emotions.test.ts`
+Expected: FAIL en "las ordena por la posición de su punto…" (devuelve `e1, e2, e3`); la de "conservan el orden" ya pasa porque la ordenación actual no reordena nada, y debe seguir pasando después.
+
+- [ ] **Step 3: Reemplazar `src/domain/analytics/emotions.ts` entero**
+
+```ts
+import type { PointContext, Situation } from '../scoring';
+import type { Emotion, EmotionTag, Point } from '../types';
+import { ratio, type Ratio } from './types';
+
+// Cuántos puntos siguientes a una emoción se miran.
+export const EMOTION_WINDOW = 5;
+
+export type EmotionEffect = {
+  emotionId: string;
+  playerId: string;
+  tag: EmotionTag;
+  contextLabel: string; // dónde ocurrió: "Set 2 · 4-3 · 30-30"
+  window: Ratio; // puntos ganados por la pareja / puntos mirados (hasta EMOTION_WINDOW, sin salir del set)
+  unforcedByPlayer: number; // no forzados de ese jugador dentro de la ventana
+};
+
+export type EmotionSummary = {
+  playerId: string;
+  tag: EmotionTag;
+  count: number;
+  afterTag: Ratio; // suma de las ventanas de esa etiqueta y jugador
+};
+
+type LabelSource = Pick<Situation, 'setIndex' | 'gamesUs' | 'gamesThem' | 'scoreLabel'>;
+
+export const situationLabel = (s: LabelSource) => `Set ${s.setIndex + 1} · ${s.gamesUs}-${s.gamesThem} · ${s.scoreLabel}`;
+
+// `current` es la situación tras el último punto (null si el partido ha terminado); se usa para
+// situar una emoción anotada después del último punto jugado.
+export function emotionEffects(
+  played: Point[],
+  contexts: PointContext[],
+  emotions: Emotion[],
+  current: Situation | null,
+): EmotionEffect[] {
+  const effects: EmotionEffect[] = [];
+
+  // `start` es el índice del punto tras el que se anotó la emoción (−1: antes del primero). Se ordenan por esa
+  // posición y no por cuándo se anotaron: una emoción añadida después, desde la revisión, debe salir en su sitio.
+  // El orden es estable: las de un mismo punto conservan el orden en que se anotaron.
+  const positioned = emotions
+    .map((e) => ({ e, start: e.afterPointId === null ? -1 : played.findIndex((p) => p.id === e.afterPointId) }))
+    .filter(({ e, start }) => e.afterPointId === null || start !== -1) // el punto ya no existe
+    .sort((a, b) => a.start - b.start);
+
+  for (const { e, start } of positioned) {
+    const emotionSet = start === -1 ? (contexts[0]?.setIndex ?? 0) : contexts[start].setIndex;
+    let won = 0;
+    let total = 0;
+    let unforced = 0;
+    for (let j = start + 1; j < played.length && j <= start + EMOTION_WINDOW; j++) {
+      if (contexts[j].setIndex !== emotionSet) break; // la ventana se corta al acabar el set
+      total++;
+      if (contexts[j].wonBy === 'us') won++;
+      if (played[j].outcome === 'no_forzado_nuestro' && played[j].playerId === e.playerId) unforced++;
+    }
+
+    const at = contexts[start + 1] ?? current;
+    effects.push({
+      emotionId: e.id,
+      playerId: e.playerId,
+      tag: e.tag,
+      contextLabel: at ? situationLabel(at) : 'Final del partido',
+      window: ratio(won, total),
+      unforcedByPlayer: unforced,
+    });
+  }
+
+  return effects;
+}
+
+// Agrupa por jugador y etiqueta. Si dos ventanas se solapan, esos puntos cuentan en las dos.
+export function emotionSummary(effects: EmotionEffect[]): EmotionSummary[] {
+  const groups = new Map<string, EmotionSummary>();
+  for (const e of effects) {
+    const key = `${e.playerId}|${e.tag}`;
+    const group = groups.get(key) ?? { playerId: e.playerId, tag: e.tag, count: 0, afterTag: ratio(0, 0) };
+    group.count++;
+    group.afterTag = ratio(group.afterTag.won + e.window.won, group.afterTag.total + e.window.total);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+```
+
+- [ ] **Step 4: Ejecutar y comprobar que pasa**
+
+Run: `npm test` y `npx tsc`
+Expected: 116 pruebas pasan; `tsc` sin salida.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/domain/analytics/emotions.ts src/domain/analytics/emotions.test.ts
+git commit -m "Informe: las emociones se ordenan por la posición de su punto"
+```
+
+---
+
+### Task 5: Capa de datos, zonas y alta del partido con modo y fecha
 
 **Files:**
 - Modify: `src/domain/helpers.ts`, `src/data/mutations.ts`, `src/screens/NewMatchScreen.tsx`
@@ -424,7 +798,7 @@ export const ZONE_LABEL: Record<Zone, string> = { fondo: 'Fondo', red: 'Red' };
 
 - [ ] **Step 2: Reemplazar `src/data/mutations.ts` entero**
 
-Añade `updatePoint`, `insertPoint`, `deletePoint`, `deleteEmotion` y `setPointZone`; `setPointShot` admite `null`; `createMatch` recibe el modo; `undoPoint` delega en `deletePoint`. Ninguna función espera a Firestore.
+Añade `updatePoint`, `insertPoint`, `deletePoint`, `deleteEmotion` y `setPointZone`; `setPointShot` admite `null`; `createMatch` recibe el modo y, opcionalmente, la fecha; `undoPoint` delega en `deletePoint`. Ninguna función espera a Firestore.
 
 ```ts
 import { doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
@@ -468,13 +842,14 @@ export type NewMatch = {
   format: MatchFormat;
   firstServer: Side;
   mode: Match['mode'];
+  date?: number; // por defecto, hoy; al registrar desde un vídeo suele ser otro día
 };
 
 export function createMatch(uid: string, input: NewMatch): string {
   const ref = doc(matchesCol(uid));
   const now = Date.now();
   fire(
-    setDoc(ref, { ...input, date: now, createdAt: now, status: 'in_progress' }),
+    setDoc(ref, { ...input, date: input.date ?? now, createdAt: now, status: 'in_progress' }),
     `partido contra ${input.opponentsName}`,
   );
   return ref.id;
@@ -582,7 +957,7 @@ export default function Choice<T extends string>(props: {
 
 - [ ] **Step 4: Reemplazar `src/screens/NewMatchScreen.tsx` entero**
 
-Usa `Choice` compartido y añade "Cómo vas a registrar" (en directo o desde vídeo).
+Usa `Choice` compartido y añade "Cómo vas a registrar" (en directo o desde vídeo). En modo vídeo aparece además "Fecha en que se jugó" (por defecto, hoy).
 
 ```tsx
 import { useState } from 'react';
@@ -590,6 +965,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Choice from '../components/Choice';
 import { pairName, playerName, useCoachData } from '../data/CoachData';
 import { createMatch } from '../data/mutations';
+import { dateFromInput, dateInputValue } from '../domain/format';
 import type { Match, MatchFormat, Side } from '../domain/types';
 
 export default function NewMatchScreen() {
@@ -602,6 +978,7 @@ export default function NewMatchScreen() {
   const [finalSet, setFinalSet] = useState<MatchFormat['finalSet']>('set_completo');
   const [firstServer, setFirstServer] = useState<Side>('us');
   const [mode, setMode] = useState<Match['mode']>('directo');
+  const [dateText, setDateText] = useState(() => dateInputValue(Date.now()));
 
   const pair = pairs.find((p) => p.id === pairId);
 
@@ -624,6 +1001,8 @@ export default function NewMatchScreen() {
       format: { deuce, finalSet },
       firstServer,
       mode,
+      // En directo el partido es de hoy; desde un vídeo se puede elegir el día en que se jugó.
+      date: mode === 'video' ? (dateFromInput(dateText) ?? undefined) : undefined,
     });
     navigate(`/partido/${id}`);
   };
@@ -704,6 +1083,17 @@ export default function NewMatchScreen() {
             ]}
             onChange={setMode}
           />
+          {mode === 'video' && (
+            <div className="space-y-1">
+              <p className="text-sm text-slate-400">Fecha en que se jugó</p>
+              <input
+                type="date"
+                value={dateText}
+                onChange={(e) => setDateText(e.target.value)}
+                className="w-full rounded-lg bg-slate-900 p-3"
+              />
+            </div>
+          )}
 
           <button onClick={start} disabled={!pair} className="w-full rounded-xl bg-green-700 p-4 text-lg font-bold disabled:opacity-40">
             Empezar partido
@@ -718,24 +1108,24 @@ export default function NewMatchScreen() {
 - [ ] **Step 5: Verificar**
 
 Run: `npx tsc`, `npm test` y `npm run build`
-Expected: `tsc` sin salida; 110 pruebas pasan; la compilación termina sin errores.
+Expected: `tsc` sin salida; 116 pruebas pasan; la compilación termina sin errores.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src
-git commit -m "Capa de datos para corregir puntos, zonas y modo al crear el partido"
+git commit -m "Capa de datos para corregir puntos, zonas y alta con modo y fecha"
 ```
 
 ---
 
-### Task 4: Modo vídeo en el registro
+### Task 6: Modo vídeo en el registro
 
 **Files:**
 - Create: `src/components/ModeToggle.tsx`
-- Modify: `src/components/ShotRow.tsx`, `src/screens/TrackerScreen.tsx`
+- Modify: `src/components/OutcomeButtons.tsx`, `src/components/ShotRow.tsx`, `src/screens/TrackerScreen.tsx`
 
-Reglas del modo vídeo (spec §7): tras un punto de nuestra pareja con jugador, la fila de golpe **y zona** se queda hasta que se marca el siguiente punto, sin temporizador. Tocar el golpe o la zona ya elegidos los quita. Un punto del rival o sin detalle no abre la fila. En modo directo todo sigue como antes (solo golpe, se cierra a los 4 s).
+Reglas del modo vídeo (spec §7): tras un punto de nuestra pareja con jugador, la fila de golpe **y zona** se queda hasta que se marca el siguiente punto, sin temporizador. Tocar el golpe o la zona ya elegidos los quita. Un punto del rival o sin detalle no abre la fila. En modo directo todo sigue como antes (solo golpe, se cierra a los 4 s). En vídeo los botones de punto son más bajos para dejar sitio al panel.
 
 - [ ] **Step 1: Crear `src/components/ModeToggle.tsx`**
 
@@ -766,9 +1156,77 @@ export default function ModeToggle(props: { mode: Match['mode']; disabled?: bool
 }
 ```
 
-- [ ] **Step 2: Reemplazar `src/components/ShotRow.tsx` entero**
+- [ ] **Step 2: Reemplazar `src/components/OutcomeButtons.tsx` entero**
 
-Con `zone` (solo en modo vídeo) añade la fila de zona y se compacta (sin título, botones de 40 px) para tapar lo menos posible el marcador.
+Con `compact` (modo vídeo): winner, no forzado y forzado de 48 px en vez de 64; los de rival de 48 en vez de 56; los "sin detalle" de 40 en vez de 44.
+
+```tsx
+import type { Outcome } from '../domain/types';
+
+type Register = (outcome: Outcome, playerId: string | null) => void;
+
+const BTN = 'rounded-xl font-bold text-white active:scale-95 active:brightness-125 disabled:opacity-30';
+
+function PlayerColumn(props: { name: string; playerId: string; disabled: boolean; compact: boolean; onRegister: Register }) {
+  const { playerId, disabled, compact, onRegister } = props;
+  const h = compact ? 'h-12' : 'h-16';
+  return (
+    <div className="flex flex-1 flex-col gap-2">
+      <p className="truncate text-center text-xs uppercase tracking-wide text-slate-400">{props.name}</p>
+      <button disabled={disabled} onClick={() => onRegister('winner_nuestro', playerId)} className={`${BTN} ${h} bg-green-700`}>
+        Winner
+      </button>
+      <button disabled={disabled} onClick={() => onRegister('no_forzado_nuestro', playerId)} className={`${BTN} ${h} bg-amber-700`}>
+        No forzado
+      </button>
+      <button disabled={disabled} onClick={() => onRegister('forzado_nuestro', playerId)} className={`${BTN} ${h} bg-red-700`}>
+        Forzado
+      </button>
+    </div>
+  );
+}
+
+// `compact` (modo vídeo): botones más bajos para dejar sitio al panel de golpe y zona, que queda abierto.
+// Con el vídeo en pausa no hay prisa, y el tamaño no cambia al abrirse el panel, así que nada se mueve bajo el dedo.
+export default function OutcomeButtons(props: {
+  left: { id: string; name: string };
+  right: { id: string; name: string };
+  disabled: boolean;
+  compact?: boolean;
+  onRegister: Register;
+}) {
+  const { disabled, onRegister } = props;
+  const compact = props.compact ?? false;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <PlayerColumn name={props.left.name} playerId={props.left.id} disabled={disabled} compact={compact} onRegister={onRegister} />
+        <PlayerColumn name={props.right.name} playerId={props.right.id} disabled={disabled} compact={compact} onRegister={onRegister} />
+      </div>
+      <div className="flex gap-2">
+        <button disabled={disabled} onClick={() => onRegister('error_rival', null)} className={`${BTN} ${compact ? 'h-12' : 'h-14'} flex-1 bg-green-700`}>
+          Error rival
+        </button>
+        <button disabled={disabled} onClick={() => onRegister('winner_rival', null)} className={`${BTN} ${compact ? 'h-12' : 'h-14'} flex-1 bg-red-700`}>
+          Winner rival
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <button disabled={disabled} onClick={() => onRegister('nuestro_sin_detalle', null)} className={`${BTN} ${compact ? 'h-10' : 'h-11'} flex-1 bg-slate-700 text-sm`}>
+          Punto nuestro
+        </button>
+        <button disabled={disabled} onClick={() => onRegister('rival_sin_detalle', null)} className={`${BTN} ${compact ? 'h-10' : 'h-11'} flex-1 bg-slate-700 text-sm`}>
+          Punto rival
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Reemplazar `src/components/ShotRow.tsx` entero**
+
+Con `zone` (solo en modo vídeo) añade la fila de zona y se compacta (sin título, botones de 40 px).
 
 ```tsx
 import { SHOTS, SHOT_LABEL, ZONES, ZONE_LABEL } from '../domain/helpers';
@@ -812,9 +1270,9 @@ export default function ShotRow({ onPick, selected = null, zone }: Props) {
 }
 ```
 
-- [ ] **Step 3: Reemplazar `src/screens/TrackerScreen.tsx` entero**
+- [ ] **Step 4: Reemplazar `src/screens/TrackerScreen.tsx` entero**
 
-Cambios respecto a la versión actual: importa `ModeToggle`, `setPointZone` y `Zone`; el temporizador de 4 s solo corre en modo directo; `pickShot` y `pickZone` permiten elegir y quitar sin cerrar la fila en modo vídeo; la fila del indicador de sincronización lleva el selector de modo.
+Cambios respecto a la versión actual: importa `ModeToggle`, `setPointZone` y `Zone`; el temporizador de 4 s solo corre en modo directo; `pickShot` y `pickZone` permiten elegir y quitar sin cerrar la fila en modo vídeo; la fila del indicador de sincronización lleva el selector de modo; los botones de punto son compactos en modo vídeo.
 
 ```tsx
 import { orderBy, query } from 'firebase/firestore';
@@ -978,6 +1436,7 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
         left={{ id: leftId, name: playerName(players, leftId) }}
         right={{ id: rightId, name: playerName(players, rightId) }}
         disabled={locked}
+        compact={video}
         onRegister={register}
       />
 
@@ -1013,12 +1472,12 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
 }
 ```
 
-- [ ] **Step 4: Verificar**
+- [ ] **Step 5: Verificar**
 
 Run: `npx tsc`, `npm test` y `npm run build`
-Expected: `tsc` sin salida; 110 pruebas pasan; la compilación termina sin errores.
+Expected: `tsc` sin salida; 116 pruebas pasan; la compilación termina sin errores.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src
@@ -1027,14 +1486,14 @@ git commit -m "Modo vídeo: golpe y zona a la vista hasta el siguiente punto"
 
 ---
 
-### Task 5: Panel de edición y datos del partido
+### Task 7: Panel de edición y datos del partido
 
 **Files:**
 - Create: `src/components/review/PointEditor.tsx`, `src/components/review/MatchDataEditor.tsx`
 
 - [ ] **Step 1: Crear `PointEditor.tsx`**
 
-Un panel inferior. Sirve para editar un punto existente (con emociones, insertar antes o después y borrar) y para crear uno nuevo (sin esas secciones). El padre debe darle una `key` distinta por punto para que se reinicie al abrir otro.
+Un panel inferior. Sirve para editar un punto existente (con emociones, insertar antes o después y borrar) y para crear uno nuevo (sin esas secciones). Pide confirmación al cerrar o saltar con cambios sin guardar. El padre debe darle una `key` distinta por punto para que se reinicie al abrir otro.
 
 ```tsx
 import { useState } from 'react';
@@ -1066,6 +1525,8 @@ type Props = {
   initial: PointDraft;
   players: { id: string; name: string }[];
   onSave: (fields: PointFields) => void;
+  // Guarda y abre el siguiente punto por completar; solo se pasa si hay alguno.
+  onSaveAndNext?: (fields: PointFields) => void;
   onClose: () => void;
   // Solo al editar un punto que ya existe (un punto nuevo aún no tiene emociones ni vecinos).
   existing?: Existing;
@@ -1075,7 +1536,7 @@ const chip = (active: boolean) => `rounded-lg px-3 py-2 text-sm font-semibold ${
 
 // Panel inferior para completar, corregir o crear un punto. Los cambios del punto se guardan con
 // "Guardar"; las emociones y el borrado se aplican al momento.
-export default function PointEditor({ title, initial, players, onSave, onClose, existing }: Props) {
+export default function PointEditor({ title, initial, players, onSave, onSaveAndNext, onClose, existing }: Props) {
   const [draft, setDraft] = useState<PointDraft>(initial);
   const [emotionPlayer, setEmotionPlayer] = useState(players[0]?.id ?? '');
   const [emotionTag, setEmotionTag] = useState<EmotionTag>(EMOTION_GRID[0]);
@@ -1089,8 +1550,20 @@ export default function PointEditor({ title, initial, players, onSave, onClose, 
     if (fields) onSave(fields);
   };
 
+  const saveAndNext = () => {
+    const fields = draftToFields(draft);
+    if (fields && onSaveAndNext) onSaveAndNext(fields);
+  };
+
+  // Cerrar o saltar a otro punto descarta lo que no se haya guardado: se avisa antes.
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  const discardable = (action: () => void) => () => {
+    if (!dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?')) action();
+  };
+  const close = discardable(onClose);
+
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60" onClick={close}>
       <div
         className="max-h-[92%] space-y-4 overflow-y-auto rounded-t-2xl bg-slate-900 p-4"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
@@ -1157,13 +1630,22 @@ export default function PointEditor({ title, initial, players, onSave, onClose, 
         {problem && <p className="text-sm text-amber-400">{problem}</p>}
 
         <div className="flex gap-2">
-          <button onClick={onClose} className="h-12 flex-1 rounded-xl bg-slate-800 font-bold">
+          <button onClick={close} className="h-12 flex-1 rounded-xl bg-slate-800 font-bold">
             Cancelar
           </button>
           <button onClick={save} disabled={problem !== null} className="h-12 flex-1 rounded-xl bg-blue-600 font-bold disabled:opacity-40">
             Guardar
           </button>
         </div>
+        {onSaveAndNext && (
+          <button
+            onClick={saveAndNext}
+            disabled={problem !== null}
+            className="h-11 w-full rounded-xl bg-slate-800 text-sm font-bold disabled:opacity-40"
+          >
+            Guardar y pasar al siguiente por completar
+          </button>
+        )}
 
         {existing && (
           <>
@@ -1202,10 +1684,10 @@ export default function PointEditor({ title, initial, players, onSave, onClose, 
             </section>
 
             <section className="grid grid-cols-2 gap-2 border-t border-slate-800 pt-4">
-              <button onClick={existing.onInsertBefore} className="h-11 rounded-lg bg-slate-800 text-sm font-semibold">
+              <button onClick={discardable(existing.onInsertBefore)} className="h-11 rounded-lg bg-slate-800 text-sm font-semibold">
                 Insertar punto antes
               </button>
-              <button onClick={existing.onInsertAfter} className="h-11 rounded-lg bg-slate-800 text-sm font-semibold">
+              <button onClick={discardable(existing.onInsertAfter)} className="h-11 rounded-lg bg-slate-800 text-sm font-semibold">
                 Insertar punto después
               </button>
               <button onClick={existing.onDelete} className="col-span-2 h-11 rounded-lg bg-red-900 text-sm font-bold">
@@ -1222,10 +1704,11 @@ export default function PointEditor({ title, initial, players, onSave, onClose, 
 
 - [ ] **Step 2: Crear `MatchDataEditor.tsx`**
 
-Rivales (se guarda al salir del campo, y un nombre vacío se descarta), formato y quién sacó primero.
+Rivales (se guarda al salir del campo, y un nombre vacío se descarta), fecha, formato y quién sacó primero.
 
 ```tsx
 import { useState } from 'react';
+import { dateFromInput, dateInputValue } from '../../domain/format';
 import type { Match } from '../../domain/types';
 import Choice from '../Choice';
 
@@ -1254,6 +1737,18 @@ export default function MatchDataEditor(props: {
             value={rivals}
             onChange={(e) => setRivals(e.target.value)}
             onBlur={commitRivals}
+            className="w-full rounded-lg bg-slate-800 p-3"
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-slate-400">Fecha del partido</p>
+          <input
+            type="date"
+            value={dateInputValue(match.date)}
+            onChange={(e) => {
+              const date = dateFromInput(e.target.value);
+              if (date !== null) onChange({ date });
+            }}
             className="w-full rounded-lg bg-slate-800 p-3"
           />
         </div>
@@ -1294,7 +1789,7 @@ export default function MatchDataEditor(props: {
 - [ ] **Step 3: Verificar**
 
 Run: `npx tsc`, `npm test` y `npm run build`
-Expected: `tsc` sin salida; 110 pruebas pasan; compilación correcta.
+Expected: `tsc` sin salida; 116 pruebas pasan; compilación correcta.
 
 - [ ] **Step 4: Commit**
 
@@ -1305,7 +1800,7 @@ git commit -m "Panel de edición de un punto y de los datos del partido"
 
 ---
 
-### Task 6: Pantalla de revisión, ruta y enlaces
+### Task 8: Pantalla de revisión, ruta y enlaces
 
 **Files:**
 - Create: `src/screens/ReviewScreen.tsx`
@@ -1313,7 +1808,7 @@ git commit -m "Panel de edición de un punto y de los datos del partido"
 
 - [ ] **Step 1: Crear `ReviewScreen.tsx`**
 
-Una fila por punto con su marcador previo y lo que falta resaltado; filtro "Por completar"; al tocar una fila se abre el panel. Como en el registro y el informe, solo se espera a los puntos para pintar.
+Una fila por punto con su marcador previo y lo que falta resaltado; filtro "Por completar"; al tocar una fila se abre el panel, con "Guardar y pasar al siguiente por completar" si queda alguno. Como en el registro y el informe, solo se espera a los puntos para pintar.
 
 ```tsx
 import { orderBy, query } from 'firebase/firestore';
@@ -1402,10 +1897,17 @@ function Review({ uid, match, players }: { uid: string; match: Match; players: P
   const incomplete = rows.filter((r) => r.missing.length > 0).length;
   const shown = onlyMissing ? rows.filter((r) => r.missing.length > 0) : rows;
   const editedRow = editing?.kind === 'edit' ? rows.find((r) => r.point.id === editing.pointId) : undefined;
+  // El siguiente punto por completar después del que se está editando (para "Guardar y pasar al siguiente").
+  const nextIncomplete = editedRow ? rows.find((r) => r.number > editedRow.number && r.missing.length > 0) : undefined;
 
   const saveEdit = (fields: PointFields) => {
     if (editing?.kind === 'edit') updatePoint(uid, match.id, editing.pointId, fields);
     setEditing(null);
+  };
+
+  const saveAndNext = (fields: PointFields) => {
+    if (editing?.kind === 'edit') updatePoint(uid, match.id, editing.pointId, fields);
+    setEditing(nextIncomplete ? { kind: 'edit', pointId: nextIncomplete.point.id } : null);
   };
 
   const saveInsert = (fields: PointFields) => {
@@ -1482,6 +1984,7 @@ function Review({ uid, match, players }: { uid: string; match: Match; players: P
           initial={draftOf(editedRow.point)}
           players={ourPlayers}
           onSave={saveEdit}
+          onSaveAndNext={nextIncomplete ? saveAndNext : undefined}
           onClose={() => setEditing(null)}
           existing={{
             emotions: editedRow.emotions,
@@ -1583,9 +2086,9 @@ por:
 - [ ] **Step 5: Verificar**
 
 Run: `npx tsc`, `npm test` y `npm run build`
-Expected: `tsc` sin salida; 110 pruebas pasan; compilación correcta.
+Expected: `tsc` sin salida; 116 pruebas pasan; compilación correcta.
 
-Run: `npm run dev` en segundo plano y comprobar con `curl` que `/src/screens/ReviewScreen.tsx` y `/src/components/review/PointEditor.tsx` responden 200 y que el log no muestra errores; detener el servidor. La comprobación interactiva necesita iniciar sesión con Google y la hace el usuario (Tarea 7).
+Run: `npm run dev` en segundo plano y comprobar con `curl` que `/src/screens/ReviewScreen.tsx` y `/src/components/review/PointEditor.tsx` responden 200 y que el log no muestra errores; detener el servidor. La comprobación interactiva necesita iniciar sesión con Google y la hace el usuario (Tarea 9).
 
 - [ ] **Step 6: Commit**
 
@@ -1596,53 +2099,58 @@ git commit -m "Pantalla de revisión punto por punto, con su ruta y accesos"
 
 ---
 
-### Task 7: Despliegue y comprobaciones en iPhone (usuario)
+### Task 9: Despliegue y comprobaciones en iPhone (usuario)
 
-Esta tarea no la hace un subagente: requiere el iPhone y la sesión de Google del usuario. Antes, subir los commits (`git push origin main`) y comprobar con `vercel ls` que el despliegue termina en `Ready`.
+Esta tarea no la hace un subagente: requiere el iPhone y la sesión de Google del usuario. Subir los commits despliega en producción **y cambia la pantalla de registro que se usa en la pista**, así que antes de `git push origin main` conviene haber hecho una pasada con datos simulados sobre los archivos reales (registro en directo con la fila de golpes nueva, alta en modo vídeo, tarjeta de la lista a 375 px). Después comprobar con `vercel ls` que el despliegue termina en `Ready`.
 
-- [ ] **Step 1: Crear un partido en modo vídeo**
+- [ ] **Step 1: El registro en directo sigue igual**
 
-Nuevo partido, elegir "Desde vídeo", y registrar unos 10 puntos de tu pareja.
-Expected: tras cada punto con jugador, la fila de golpe y zona se queda; tocar un golpe lo resalta y tocarlo otra vez lo quita; un punto del rival cierra la fila.
+Crear un partido en modo directo y registrar unos puntos.
+Expected: igual que antes del tramo 3: botones de 64 px, la fila de golpes sale tras un punto con jugador y se cierra sola a los 4 s. Es lo que usas en pista: si algo ha cambiado, anotarlo antes de seguir.
 
-- [ ] **Step 2: ¿Tapa el marcador?**
+- [ ] **Step 2: Crear un partido en modo vídeo**
 
-Con la fila abierta, mirar cuánto del marcador queda a la vista en tu iPhone.
-Expected: se ve, como mínimo, la fila de tu pareja. Si molesta, anotarlo y el modelo de iPhone: la alternativa es mover el selector de modo y la fila de sincronización fuera de la zona que cubre el panel.
+Nuevo partido, elegir "Desde vídeo", fijar la fecha en que se jugó, y registrar unos 10 puntos de tu pareja.
+Expected: tras cada punto con jugador, la fila de golpe y zona se queda; tocar un golpe lo resalta y tocarlo otra vez lo quita; un punto del rival cierra la fila. En la lista, el partido aparece con la fecha elegida.
 
-- [ ] **Step 3: Cambiar de modo a mitad de partido**
+- [ ] **Step 3: ¿Tapa el marcador?**
+
+Con la fila abierta, mirar cuánto queda a la vista en tu iPhone.
+Expected: se ven las dos filas del marcador. El selector de modo y el indicador de sincronización pueden quedar tapados en un iPhone pequeño. Si molesta, anotarlo con el modelo de iPhone.
+
+- [ ] **Step 4: Cambiar de modo a mitad de partido**
 
 Pulsar "En directo" y registrar un punto; volver a "Desde vídeo".
 Expected: en directo la fila solo pide golpe y se cierra sola a los 4 segundos; en vídeo vuelve a quedarse.
 
-- [ ] **Step 4: Completar un partido registrado en directo**
+- [ ] **Step 5: Completar un partido registrado en directo**
 
-Desde la lista, "Revisión" de un partido con puntos sin golpe o sin zona. Pulsar "Por completar".
-Expected: salen los puntos con "Falta: golpe, zona" o "Falta: causa". Completar tres y ver que el contador baja.
+Desde la lista, "Revisión" de un partido con puntos sin golpe o sin zona. Pulsar "Por completar" y completar varios con "Guardar y pasar al siguiente por completar".
+Expected: salen los puntos con "Falta: golpe, zona" o "Falta: causa"; el contador baja; el botón lleva directo al siguiente.
 
-- [ ] **Step 5: Insertar, corregir y borrar**
+- [ ] **Step 6: Insertar, corregir y borrar**
 
-Insertar un punto olvidado entre dos puntos; cambiar el resultado de uno; borrar uno que tenga una emoción.
-Expected: el marcador previo de todos los puntos siguientes se recalcula; el punto insertado queda en su sitio; al borrar desaparece su emoción.
+Insertar un punto olvidado entre dos puntos; cambiar el resultado de uno; borrar uno que tenga una emoción; añadir una emoción a otro.
+Expected: el marcador previo de todos los puntos siguientes se recalcula; el punto insertado queda en su sitio; al borrar desaparece su emoción. Al cerrar el panel con cambios sin guardar pregunta.
 
-- [ ] **Step 6: Datos del partido**
+- [ ] **Step 7: Datos del partido**
 
-Abrir "Datos del partido": cambiar quién sacó primero y el formato.
-Expected: los marcadores de las filas cambian de inmediato.
+Abrir "Datos del partido": cambiar la fecha, quién sacó primero y el formato.
+Expected: los marcadores de las filas cambian de inmediato; la fecha cambia en la lista.
 
-- [ ] **Step 7: Sin conexión**
+- [ ] **Step 8: Sin conexión**
 
 Con el modo avión, abrir la revisión de un partido ya cargado, completar un punto y volver a conectar.
 Expected: el cambio se ve al momento; al recuperar la red el aviso de sincronización pasa a "Todo guardado" y el dato aparece en otro dispositivo.
 
-- [ ] **Step 8: El informe refleja las correcciones**
+- [ ] **Step 9: El informe refleja las correcciones**
 
 Abrir el informe de ese partido ("Revisar puntos" → "Informe").
-Expected: los números cambian según lo corregido.
+Expected: los números cambian según lo corregido; las emociones añadidas desde la revisión salen en su sitio (por punto, no al final).
 
-- [ ] **Step 9: Registrar el resultado**
+- [ ] **Step 10: Registrar el resultado**
 
-Crear `docs/superpowers/plans/2026-11-15-tramo-3-comprobaciones.md` con fecha, modelo de iPhone, versión de iOS y el resultado de los pasos 1 a 8, y hacer commit.
+Crear `docs/superpowers/plans/2026-11-16-tramo-3-comprobaciones.md` con fecha, modelo de iPhone, versión de iOS y el resultado de los pasos 1 a 9, y hacer commit.
 
 ---
 
@@ -1650,18 +2158,19 @@ Crear `docs/superpowers/plans/2026-11-15-tramo-3-comprobaciones.md` con fecha, m
 
 | Requisito | Tarea |
 |---|---|
-| Modo al crear el partido (en directo o desde vídeo) | 3 |
-| Modo cambiable en cualquier momento | 4 |
-| Modo vídeo: golpe y zona hasta el siguiente punto | 4 |
-| Zona solo en modo vídeo o al completar después | 4, 5 |
-| Revisión: una fila por punto con marcador previo, resultado, jugador, golpe, zona y emociones | 2, 6 |
-| Campos vacíos destacados | 2, 6 |
-| Editar cualquier campo de un punto | 2, 5, 6 |
-| Añadir o quitar emociones | 5, 6 |
-| Insertar un punto antes o después sin reescribir los demás | 1, 5, 6 |
-| Borrar un punto (y sus emociones) | 3, 5, 6 |
-| Corregir formato, quién saca primero y rivales | 5, 6 |
-| Todo se recalcula | 2, 6 (el marcador sale siempre de `computeMatchState`) |
-| Completar un partido apuntado en directo, también desde otro dispositivo | 6, 7 |
+| Modo al crear el partido (en directo o desde vídeo) | 5 |
+| Modo cambiable en cualquier momento | 6 |
+| Modo vídeo: golpe y zona hasta el siguiente punto | 6 |
+| Zona solo en modo vídeo o al completar después | 6, 7 |
+| Revisión: una fila por punto con marcador previo, resultado, jugador, golpe, zona y emociones | 2, 8 |
+| Campos vacíos destacados | 2, 8 |
+| Editar cualquier campo de un punto | 2, 7, 8 |
+| Añadir o quitar emociones | 4, 7, 8 |
+| Insertar un punto antes o después sin reescribir los demás | 1, 7, 8 |
+| Borrar un punto (y sus emociones) | 5, 7, 8 |
+| Corregir formato, quién saca primero y rivales | 7, 8 |
+| Fecha del partido (registrado otro día desde vídeo) | 3, 5, 7 |
+| Todo se recalcula | 2, 8 (el marcador sale siempre de `computeMatchState`) |
+| Completar un partido apuntado en directo, también desde otro dispositivo | 8, 9 |
 
 Fuera de este plan: acumulados por jugador y pareja, enlace de solo lectura, vídeo dentro de la app, zona en el informe.
