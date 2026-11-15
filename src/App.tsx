@@ -1,16 +1,22 @@
-import { useAuth, signOutUser } from './data/auth';
+import { Route, Routes } from 'react-router-dom';
+import WriteErrorBanner from './components/WriteErrorBanner';
+import { useAuth } from './data/auth';
+import { CoachDataProvider } from './data/CoachData';
+import HomeScreen from './screens/HomeScreen';
 import LoginScreen from './screens/LoginScreen';
+import PlayersScreen from './screens/PlayersScreen';
 
 export default function App() {
   const { user } = useAuth();
   if (user === undefined) return <p className="p-6 text-slate-400">Cargando…</p>;
   if (user === null) return <LoginScreen />;
   return (
-    <div className="p-6">
-      <p>Sesión iniciada: {user.email}</p>
-      <button onClick={() => void signOutUser()} className="mt-4 rounded-lg bg-slate-800 px-4 py-2">
-        Cerrar sesión
-      </button>
-    </div>
+    <CoachDataProvider uid={user.uid}>
+      <WriteErrorBanner />
+      <Routes>
+        <Route path="/" element={<HomeScreen />} />
+        <Route path="/jugadores" element={<PlayersScreen />} />
+      </Routes>
+    </CoachDataProvider>
   );
 }
