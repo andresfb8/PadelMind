@@ -1,32 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import Choice from '../components/Choice';
 import { pairName, playerName, useCoachData } from '../data/CoachData';
 import { createMatch } from '../data/mutations';
-import type { MatchFormat, Side } from '../domain/types';
-
-function Choice<T extends string>(props: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-sm text-slate-400">{props.label}</p>
-      <div className="flex gap-2">
-        {props.options.map((o) => (
-          <button
-            key={o.value}
-            onClick={() => props.onChange(o.value)}
-            className={`flex-1 rounded-lg p-3 font-bold ${props.value === o.value ? 'bg-blue-600' : 'bg-slate-800'}`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { dateFromInput, dateInputValue } from '../domain/format';
+import type { Match, MatchFormat, Side } from '../domain/types';
 
 export default function NewMatchScreen() {
   const { uid, players, pairs } = useCoachData();
@@ -37,6 +15,8 @@ export default function NewMatchScreen() {
   const [deuce, setDeuce] = useState<MatchFormat['deuce']>('punto_de_oro');
   const [finalSet, setFinalSet] = useState<MatchFormat['finalSet']>('set_completo');
   const [firstServer, setFirstServer] = useState<Side>('us');
+  const [mode, setMode] = useState<Match['mode']>('directo');
+  const [dateText, setDateText] = useState(() => dateInputValue(Date.now()));
 
   const pair = pairs.find((p) => p.id === pairId);
 
@@ -58,6 +38,9 @@ export default function NewMatchScreen() {
       opponentsName: opponentsName.trim() || 'Rivales',
       format: { deuce, finalSet },
       firstServer,
+      mode,
+      // En directo el partido es de hoy; desde un vídeo se puede elegir el día en que se jugó.
+      date: mode === 'video' ? (dateFromInput(dateText) ?? undefined) : undefined,
     });
     navigate(`/partido/${id}`);
   };
@@ -129,6 +112,26 @@ export default function NewMatchScreen() {
             ]}
             onChange={setFirstServer}
           />
+          <Choice
+            label="Cómo vas a registrar"
+            value={mode}
+            options={[
+              { value: 'directo', label: 'En directo' },
+              { value: 'video', label: 'Desde vídeo' },
+            ]}
+            onChange={setMode}
+          />
+          {mode === 'video' && (
+            <div className="space-y-1">
+              <p className="text-sm text-slate-400">Fecha en que se jugó</p>
+              <input
+                type="date"
+                value={dateText}
+                onChange={(e) => setDateText(e.target.value)}
+                className="w-full rounded-lg bg-slate-900 p-3"
+              />
+            </div>
+          )}
 
           <button onClick={start} disabled={!pair} className="w-full rounded-xl bg-green-700 p-4 text-lg font-bold disabled:opacity-40">
             Empezar partido

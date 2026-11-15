@@ -1,5 +1,5 @@
 import type { Situation } from './scoring';
-import type { EmotionTag, Outcome, Shot, Side } from './types';
+import type { EmotionTag, Outcome, Shot, Side, Zone } from './types';
 
 // Orden del siguiente punto: la hora actual, salvo que el último orden ya la alcance (entonces +1).
 export function nextOrder(lastOrder: number, now: number): number {
@@ -38,6 +38,10 @@ export const SHOT_LABEL: Record<Shot, string> = {
   globo: 'Globo',
   saque_resto: 'Saque/resto',
 };
+
+export const ZONES: Zone[] = ['fondo', 'red'];
+
+export const ZONE_LABEL: Record<Zone, string> = { fondo: 'Fondo', red: 'Red' };
 
 // Orden de la rejilla 3×3: las dos primeras columnas negativas, la tercera positiva.
 export const EMOTION_GRID: EmotionTag[] = [
