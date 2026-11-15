@@ -3,7 +3,7 @@ import type { Shot } from '../domain/types';
 
 export default function ShotRow(props: { onPick: (shot: Shot) => void }) {
   return (
-    <div className="space-y-1">
+    <div className="absolute inset-x-0 bottom-0 z-10 space-y-1 rounded-xl bg-[#0b0f14] p-2">
       <p className="text-center text-xs text-slate-400">¿Con qué golpe? (opcional)</p>
       <div className="grid grid-cols-4 gap-2">
         {SHOTS.map((shot) => (

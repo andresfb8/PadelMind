@@ -126,7 +126,8 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
       />
       <SyncBadge hasPending={pointsQ.hasPending || emotionsQ.hasPending} pendingPoints={pointsQ.pending} />
 
-      <div className="flex flex-1 flex-col justify-end">
+      {/* La fila de golpes flota sobre este hueco: nunca cambia el layout ni mueve los botones. */}
+      <div className="relative min-h-0 flex-1">
         {closed && <p className="text-center text-slate-400">Partido cerrado.</p>}
         {shotFor && !closed && <ShotRow onPick={pickShot} />}
       </div>
