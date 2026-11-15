@@ -53,12 +53,12 @@ coaches/{uid}/matches/{matchId}/points/{pointId}
 coaches/{uid}/matches/{matchId}/emotions/{emotionId}
 ```
 
-Todos los identificadores se generan en el cliente, para poder crear documentos sin conexión.
+Todos los identificadores se generan en el cliente, para poder crear documentos sin conexión. Las fechas se guardan como milisegundos (`Date.now()`), para que la lógica del dominio no dependa de Firebase.
 
 ```ts
-type Player = { id: string; name: string; side: 'derecha' | 'reves' | null; createdAt: Timestamp };
+type Player = { id: string; name: string; side: 'derecha' | 'reves' | null; createdAt: number };
 
-type Pair = { id: string; playerIds: [string, string]; createdAt: Timestamp };
+type Pair = { id: string; playerIds: [string, string]; createdAt: number };
 
 type MatchFormat = {
   deuce: 'punto_de_oro' | 'ventajas';
@@ -67,7 +67,7 @@ type MatchFormat = {
 
 type Match = {
   id: string;
-  date: Timestamp;
+  date: number;
   pairId: string;
   playerIds: [string, string];      // copia, para consultas por jugador
   leftPlayerId: string;             // qué jugador ocupa la columna izquierda
@@ -76,7 +76,7 @@ type Match = {
   firstServer: 'us' | 'them';
   mode: 'directo' | 'video';        // solo afecta a la interfaz; se puede cambiar
   status: 'in_progress' | 'completed';
-  createdAt: Timestamp;
+  createdAt: number;
 };
 
 type Outcome =
@@ -94,7 +94,7 @@ type Zone = 'fondo' | 'red';
 type Point = {
   id: string;
   order: number;                    // orden cronológico; ver "Orden de los puntos"
-  timestamp: Timestamp;             // hora real del registro
+  timestamp: number;             // hora real del registro
   outcome: Outcome;
   playerId: string | null;          // obligatorio en winner/no forzado/forzado nuestro; null en los de rival
   shot: Shot | null;
@@ -111,7 +111,7 @@ type Emotion = {
   playerId: string;
   tag: EmotionTag;
   afterPointId: string | null;      // punto tras el que se anotó; null si fue antes del primer punto
-  timestamp: Timestamp;
+  timestamp: number;
 };
 ```
 
