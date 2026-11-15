@@ -1,0 +1,12 @@
+{
+  "firestore": { "rules": "firestore.rules" },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Padel Mind Match",
+        "supportEmail": "andresfb8@gmail.com"
+      }
+    }
+  },
+  "emulators": { "firestore": { "port": 8080 }, "ui": { "enabled": false } }
+}
