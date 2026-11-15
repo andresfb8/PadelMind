@@ -84,7 +84,9 @@ type Outcome =
   | 'error_rival'
   | 'no_forzado_nuestro'
   | 'forzado_nuestro'
-  | 'winner_rival';
+  | 'winner_rival'
+  | 'nuestro_sin_detalle'           // punto nuestro, causa no vista
+  | 'rival_sin_detalle';            // punto del rival, causa no vista
 
 type Shot = 'derecha' | 'reves' | 'volea' | 'bandeja_vibora' | 'remate' | 'globo' | 'saque_resto';
 type Zone = 'fondo' | 'red';
@@ -115,7 +117,11 @@ type Emotion = {
 
 Etiquetas negativas: `frustracion`, `enfado_companero`, `desconexion`, `nervios`, `miedo_a_fallar`, `distraccion_externa`. Positivas: `euforia`, `confianza`, `apoyo_companero`.
 
-Quién gana el punto se deriva del resultado: `winner_nuestro` y `error_rival` son puntos nuestros; los otros tres, del rival.
+Quién gana el punto se deriva del resultado: `winner_nuestro`, `error_rival` y `nuestro_sin_detalle` son puntos nuestros; los otros cuatro, del rival.
+
+Los dos resultados "sin detalle" existen porque, en directo y solo, a veces no se ve cómo acaba un punto. Cuentan para el marcador, el momentum y la presión, pero no para winners ni errores. En la revisión se pueden convertir en un resultado concreto.
+
+`timestamp` solo equivale a la hora de juego en modo directo; en modo vídeo y en puntos insertados es la hora en que se registró.
 
 ### Orden de los puntos
 
@@ -198,7 +204,8 @@ Disposición elegida ("por jugador"), de arriba abajo:
 3. Zona libre (fuera del alcance del pulgar); aquí aparece la fila de golpes.
 4. Dos columnas, una por jugador, con tres botones cada una: Winner, No forzado, Forzado. La columna izquierda es `leftPlayerId`; un botón intercambia las columnas.
 5. Fila de rivales: Error rival, Winner rival.
-6. Fila fija: Deshacer, Emoción.
+6. Fila estrecha "no lo he visto": Punto nuestro, Punto rival (registran `nuestro_sin_detalle` y `rival_sin_detalle`).
+7. Fila fija: Deshacer, Emoción.
 
 Comportamiento:
 
@@ -208,16 +215,19 @@ Comportamiento:
 - Deshacer borra el último punto y sus emociones; se puede repetir.
 - Emoción abre un panel inferior: jugador (dos botones) y rejilla 3×3 de etiquetas. Se guarda ligada al último punto registrado y se cierra.
 - La pantalla se mantiene encendida (Wake Lock) mientras el registro está abierto.
-- Al terminar el partido, la app propone cerrarlo y abrir el informe.
+- Al terminar el partido, la app propone cerrarlo y abrir el informe. Además hay una acción "Finalizar partido" en el menú de la pantalla, para partidos que se interrumpen o que no se registran enteros.
+- El informe se puede abrir en cualquier momento, también con el partido sin terminar.
 - Si se cierra la app a mitad, el partido se reabre donde estaba.
 
 ### Revisión
+
+Los datos del partido (formato, quién saca primero, nombre de rivales) se pueden corregir después; como todo se calcula, el marcador se rehace solo.
 
 Una fila por punto: marcador previo, resultado, jugador, golpe, zona y emociones; los campos vacíos se destacan. Al tocar una fila se puede editar cualquier campo, añadir o quitar emociones, insertar un punto antes o después y borrar el punto. Todo se recalcula.
 
 ### Informe
 
-Página única, en este orden: Momentum, Resumen técnico, Bajo presión, Síndrome de cierre, Resiliencia, Efecto de las emociones. Botón "Compartir informe": genera una imagen o un PDF del informe y abre el menú de compartir del sistema (Web Share con archivos). Si no está disponible, descarga el archivo.
+Página única, en este orden: Momentum, Resumen técnico, Bajo presión, Síndrome de cierre, Resiliencia, Efecto de las emociones. Botón "Compartir informe": genera una imagen PNG del informe y abre el menú de compartir del sistema (Web Share con archivos). Si no está disponible, descarga la imagen. El PDF queda fuera del MVP.
 
 ## 8. Sin conexión y sincronización
 
@@ -225,12 +235,14 @@ Página única, en este orden: Momentum, Resumen técnico, Bajo presión, Síndr
 - Firestore se inicializa con caché local persistente. Las escrituras se aplican en local al momento y suben cuando hay red.
 - El indicador de sincronización se basa en las escrituras pendientes que informa el SDK.
 - iOS no sincroniza con la app cerrada: lo pendiente sube al reabrirla con conexión.
-- Jugadores y parejas quedan en caché desde la última sesión con red, así que se puede crear un partido sin conexión.
+- Firestore solo guarda en caché lo que se ha leído. Por eso, al arrancar, la app se suscribe a jugadores, parejas y lista de partidos; así se puede crear un partido sin conexión con los datos de la última sesión con red.
+- La interfaz nunca espera a que una escritura termine: sin red, la promesa de escritura no se resuelve hasta que vuelve la conexión. La pantalla se actualiza desde la copia local.
+- Deshacer (el punto y sus emociones) se hace en un lote de escrituras, no en una transacción, porque las transacciones no funcionan sin conexión.
 - La primera vez hace falta red para iniciar sesión.
 
 ## 9. Errores
 
-- Escritura rechazada por el servidor (no por falta de red): aviso visible; el punto se conserva en pantalla para reintentar.
+- Escritura rechazada por el servidor (no por falta de red): Firestore revierte el cambio en local, así que el punto desaparecería. La app captura el rechazo y muestra un aviso persistente con los datos del punto para volver a registrarlo. Si la app se reinició antes de sincronizar, el rechazo no se puede capturar; el riesgo es bajo porque las reglas solo dependen de la cuenta, y se cubre con las pruebas de reglas.
 - Sesión caducada sin red: se sigue registrando con la sesión guardada.
 - Métrica sin casos: "sin datos suficientes".
 - Puntos sobrantes tras el final del partido: se señalan en la revisión.
@@ -254,17 +266,22 @@ Tras el tramo 1 la app ya sirve para registrar un partido real.
 
 No se dan por hechas; se prueban en el tramo indicado y, si fallan, se replantea esa pieza:
 
+- (Tramo 1, lo primero) Iniciar sesión con Google desde la app instalada en la pantalla de inicio, alojada en Vercel. En iOS el acceso con Google puede fallar en apps instaladas cuando el dominio de autenticación no es el de la app. Se configura el dominio de autenticación en el mismo dominio que la app; alternativa si falla: acceso con correo y contraseña.
 - (Tramo 1) La caché de Firestore, con puntos sin sincronizar, sobrevive varios días sin abrir la app instalada.
 - (Tramo 1) Wake Lock mantiene la pantalla encendida en la app instalada.
 - (Tramo 2) Compartir un archivo a WhatsApp desde la app instalada. Alternativa: descarga y adjuntar a mano.
 
 ## 13. Supuestos
 
+- Vite en lugar de Next (el usuario no indicó preferencia).
+- Se añaden dos botones "no lo he visto" que no estaban en el boceto aprobado.
+- La confirmación del punto es visual, no por vibración.
+- La resiliencia mide solo el punto siguiente a un no forzado; lo que ocurre tras una emoción negativa se ve en "Efecto de las emociones".
 - La app lleva el saque por pareja (el usuario no respondió expresamente).
-- Exportación en PDF o imagen; el enlace de solo lectura queda fuera.
+- Exportación como imagen; PDF y enlace de solo lectura quedan fuera.
 - Los partidos pueden completarse desde otro dispositivo.
 - El vídeo se ve fuera de la app.
 
 ## 14. Fuera del MVP
 
-Estadísticas acumuladas por jugador y pareja, enlace de solo lectura, vídeo dentro de la app y sincronización con vídeo, cuentas de otros entrenadores, estadísticas detalladas de rivales, saque por jugador individual, edición de la lista de etiquetas o golpes desde la app.
+Estadísticas acumuladas por jugador y pareja, exportación en PDF, enlace de solo lectura, vídeo dentro de la app y sincronización con vídeo, cuentas de otros entrenadores, estadísticas detalladas de rivales, saque por jugador individual, edición de la lista de etiquetas o golpes desde la app.
