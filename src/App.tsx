@@ -4,6 +4,7 @@ import { useAuth } from './data/auth';
 import { CoachDataProvider } from './data/CoachData';
 import HomeScreen from './screens/HomeScreen';
 import LoginScreen from './screens/LoginScreen';
+import NewMatchScreen from './screens/NewMatchScreen';
 import PlayersScreen from './screens/PlayersScreen';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomeScreen />} />
         <Route path="/jugadores" element={<PlayersScreen />} />
+        <Route path="/nuevo" element={<NewMatchScreen />} />
       </Routes>
     </CoachDataProvider>
   );
