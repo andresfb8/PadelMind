@@ -72,9 +72,12 @@ function Report({ uid, match, players }: { uid: string; match: Match; players: P
     <div className="mx-auto h-full max-w-xl overflow-y-auto">
       <div className="flex items-center justify-between p-3 text-sm text-slate-400">
         <Link to="/" className="py-2">← Partidos</Link>
-        {match.status === 'in_progress' && (
-          <Link to={`/partido/${match.id}`} className="px-2 py-2">Volver al registro</Link>
-        )}
+        <div className="flex gap-3">
+          <Link to={`/partido/${match.id}/revision`} className="px-2 py-2">Revisar puntos</Link>
+          {match.status === 'in_progress' && (
+            <Link to={`/partido/${match.id}`} className="px-2 py-2">Volver al registro</Link>
+          )}
+        </div>
       </div>
 
       <ReportView

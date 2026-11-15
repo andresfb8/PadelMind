@@ -30,9 +30,14 @@ export default function HomeScreen() {
                 {new Date(m.date).toLocaleDateString('es-ES')} · {m.status === 'in_progress' ? 'En curso' : 'Terminado'}
               </p>
             </Link>
-            <Link to={`/partido/${m.id}/informe`} className="flex items-center rounded-xl bg-slate-800 px-4 text-sm font-bold">
-              Informe
-            </Link>
+            <div className="flex flex-col gap-1">
+              <Link to={`/partido/${m.id}/informe`} className="flex flex-1 items-center rounded-xl bg-slate-800 px-4 text-sm font-bold">
+                Informe
+              </Link>
+              <Link to={`/partido/${m.id}/revision`} className="flex flex-1 items-center rounded-xl bg-slate-800 px-4 text-sm font-bold">
+                Revisión
+              </Link>
+            </div>
           </div>
         ))}
       </div>

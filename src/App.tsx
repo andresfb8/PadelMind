@@ -7,6 +7,7 @@ import LoginScreen from './screens/LoginScreen';
 import NewMatchScreen from './screens/NewMatchScreen';
 import PlayersScreen from './screens/PlayersScreen';
 import ReportScreen from './screens/ReportScreen';
+import ReviewScreen from './screens/ReviewScreen';
 import TrackerScreen from './screens/TrackerScreen';
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/nuevo" element={<NewMatchScreen />} />
         <Route path="/partido/:matchId" element={<TrackerScreen />} />
         <Route path="/partido/:matchId/informe" element={<ReportScreen />} />
+        <Route path="/partido/:matchId/revision" element={<ReviewScreen />} />
       </Routes>
     </CoachDataProvider>
   );
