@@ -52,9 +52,15 @@ export async function signInWithGoogle(): Promise<void> {
 
 export const signOutUser = () => signOut(auth);
 
+// Mensaje en español para un error de acceso; null = no mostrar nada (el usuario cerró la ventana).
+export function authErrorMessage(e: unknown): string | null {
+  const code = (e as { code?: unknown } | null)?.code;
+  const known = typeof code === 'string' ? code : '';
+  if (known === 'auth/popup-closed-by-user' || known === 'auth/cancelled-popup-request') return null;
+  if (known === 'auth/network-request-failed') return 'Sin conexión. Hace falta red para iniciar sesión.';
+  if (known === 'auth/unauthorized-domain') return 'Este dominio no está autorizado para iniciar sesión.';
+  return known ? `No se pudo iniciar sesión. (${known})` : 'No se pudo iniciar sesión.';
+}
+
 // Errores de un acceso por redirección que acaba de volver a la app.
-export const redirectError = () =>
-  getRedirectResult(auth).then(
-    () => null,
-    (e: unknown) => (e instanceof Error ? e.message : 'No se pudo iniciar sesión'),
-  );
+export const redirectError = () => getRedirectResult(auth).then(() => null, authErrorMessage);

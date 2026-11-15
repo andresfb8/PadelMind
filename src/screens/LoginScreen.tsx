@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { redirectError, signInWithGoogle } from '../data/auth';
+import { authErrorMessage, redirectError, signInWithGoogle } from '../data/auth';
 
 export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export default function LoginScreen() {
   const enter = () => {
     setError(null);
     signInWithGoogle().catch((e: unknown) => {
-      setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
+      setError(authErrorMessage(e));
     });
   };
 

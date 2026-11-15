@@ -2,6 +2,14 @@ import { Link } from 'react-router-dom';
 import { signOutUser } from '../data/auth';
 import { pairName, useCoachData } from '../data/CoachData';
 
+function confirmSignOut() {
+  if (!navigator.onLine) {
+    window.alert('Sin conexión no se puede volver a entrar. Cierra sesión cuando tengas red.');
+    return;
+  }
+  if (window.confirm('¿Cerrar sesión?')) void signOutUser();
+}
+
 export default function HomeScreen() {
   const { matches, players, loading } = useCoachData();
 
@@ -31,7 +39,7 @@ export default function HomeScreen() {
         <Link to="/jugadores" className="flex-1 rounded-xl bg-slate-800 p-3 text-center">
           Jugadores
         </Link>
-        <button onClick={() => void signOutUser()} className="flex-1 rounded-xl bg-slate-800 p-3">
+        <button onClick={confirmSignOut} className="flex-1 rounded-xl bg-slate-800 p-3">
           Cerrar sesión
         </button>
       </div>
