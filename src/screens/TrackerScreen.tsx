@@ -100,7 +100,7 @@ function Tracker({ uid, match, players }: { uid: string; match: Match; players: 
     const question = state.finished ? '¿Cerrar el partido?' : 'El partido no ha terminado. ¿Finalizarlo igualmente?';
     if (!window.confirm(question)) return;
     updateMatch(uid, match.id, { status: 'completed' });
-    navigate('/');
+    navigate(`/partido/${match.id}/informe`);
   };
 
   return (

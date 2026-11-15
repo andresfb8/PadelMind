@@ -21,14 +21,19 @@ export default function HomeScreen() {
         {loading && <p className="text-slate-400">Cargando…</p>}
         {!loading && matches.length === 0 && <p className="text-slate-400">Todavía no hay partidos.</p>}
         {matches.map((m) => (
-          <Link key={m.id} to={`/partido/${m.id}`} className="block rounded-xl bg-slate-800 p-4">
-            <p className="font-bold">
-              {pairName(players, m.playerIds)} vs {m.opponentsName}
-            </p>
-            <p className="text-sm text-slate-400">
-              {new Date(m.date).toLocaleDateString('es-ES')} · {m.status === 'in_progress' ? 'En curso' : 'Terminado'}
-            </p>
-          </Link>
+          <div key={m.id} className="flex gap-2">
+            <Link to={`/partido/${m.id}`} className="block min-w-0 flex-1 rounded-xl bg-slate-800 p-4">
+              <p className="truncate font-bold">
+                {pairName(players, m.playerIds)} vs {m.opponentsName}
+              </p>
+              <p className="text-sm text-slate-400">
+                {new Date(m.date).toLocaleDateString('es-ES')} · {m.status === 'in_progress' ? 'En curso' : 'Terminado'}
+              </p>
+            </Link>
+            <Link to={`/partido/${m.id}/informe`} className="flex items-center rounded-xl bg-slate-800 px-4 text-sm font-bold">
+              Informe
+            </Link>
+          </div>
         ))}
       </div>
 
