@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatLabel, percentText, ratioText, ratioValue, reportFileName, signed } from './format';
+import { dateFromInput, dateInputValue, formatLabel, percentText, ratioText, ratioValue, reportFileName, signed } from './format';
 
 describe('percentText y ratioText', () => {
   it('redondea el porcentaje', () => {
@@ -36,5 +36,23 @@ describe('reportFileName', () => {
   });
   it('con un nombre vacío usa "partido"', () => {
     expect(reportFileName('???', day)).toBe('informe-partido-2026-11-15.png');
+  });
+});
+
+describe('fechas del campo de fecha', () => {
+  it('dateInputValue da año-mes-día en hora local', () => {
+    expect(dateInputValue(new Date(2026, 10, 5, 23, 59).getTime())).toBe('2026-11-05');
+  });
+
+  it('dateFromInput devuelve el mediodía local de ese día', () => {
+    expect(dateFromInput('2026-11-05')).toBe(new Date(2026, 10, 5, 12).getTime());
+  });
+
+  it('ida y vuelta sin saltos de día', () => {
+    expect(dateInputValue(dateFromInput('2026-03-29') as number)).toBe('2026-03-29');
+  });
+
+  it('rechaza lo que no es una fecha', () => {
+    for (const value of ['', 'abc', '2026-13-01', '2026-02-30', '26-11-05']) expect(dateFromInput(value)).toBeNull();
   });
 });

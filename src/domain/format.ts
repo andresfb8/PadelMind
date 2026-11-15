@@ -15,6 +15,23 @@ export function formatLabel(f: MatchFormat): string {
   return f.finalSet === 'super_tiebreak' ? `${deuce} · súper tie-break` : deuce;
 }
 
+// Fecha en el formato de un campo <input type="date"> ("2026-11-15"), en hora local.
+export function dateInputValue(ms: number): string {
+  const d = new Date(ms);
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+}
+
+// De "2026-11-15" al mediodía local de ese día (el mediodía evita saltos de día por la zona horaria).
+// Devuelve null si no es una fecha válida.
+export function dateFromInput(value: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(year, month - 1, day, 12);
+  const valid = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  return valid ? date.getTime() : null;
+}
+
 // "informe-ana-luis-2026-11-15.png": sin tildes ni símbolos, en minúsculas.
 export function reportFileName(label: string, date: number): string {
   const slug = label
@@ -23,7 +40,5 @@ export function reportFileName(label: string, date: number): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  const d = new Date(date);
-  const day = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-  return `informe-${slug || 'partido'}-${day}.png`;
+  return `informe-${slug || 'partido'}-${dateInputValue(date)}.png`;
 }
